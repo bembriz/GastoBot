@@ -78,7 +78,7 @@ phases:
   fase3:
     name: "Google Sheets"
     description: "Sincronización, pestañas mensuales y técnicas, consecutivos, envío, actualizaciones y movimiento entre meses"
-    status: pending
+    status: completed
     skills:
       - skill-google-sheets
     preconditions:

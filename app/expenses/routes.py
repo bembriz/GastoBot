@@ -14,6 +14,7 @@ from app.auth.session import session_cookie_name, verify_session
 from app.database.models import CatalogCache, ExpenseRecord, ImageFile, ProcessingQueue, User
 from app.database.session import get_db
 from app.templates import render
+from app.sheets.sender import send_expense as send_expense_to_sheets
 
 router = APIRouter()
 
@@ -162,3 +163,19 @@ async def update_expense(
 
     await db.commit()
     return HTMLResponse('<span style="color:var(--success);">✓ Guardado</span>')
+
+
+@router.post("/expenses/{record_id}/send")
+async def send_expense(
+    record_id: str,
+    group_code: str = Form(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await send_expense_to_sheets(record_id, group_code)
+    if result["success"]:
+        return HTMLResponse(
+            f'<span style="color:var(--success);">✓ Enviado — {result.get("description")} '
+            f'(fila {result.get("row")} en {result.get("tab")})</span>'
+        )
+    return HTMLResponse(f'<span class="error">{result["error"]}</span>')
