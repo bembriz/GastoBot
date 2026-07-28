@@ -13,16 +13,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import ExpenseRecord, ImageFile, ProcessingQueue
+from app.database.models import ExpenseRecord, ImageFile, ProcessingQueue, User
 from app.database.session import async_session
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_FILE_SIZE = 15 * 1024 * 1024
-STABILITY_CHECKS = 3
 POLL_INTERVAL = 5
 MAX_IMAGE_DIMENSION = 2048
 
@@ -77,6 +76,11 @@ async def scan_directory(owner: str, folder: str, db: AsyncSession) -> int:
     if not path.exists():
         return 0
 
+    user_result = await db.execute(select(User).where(User.username == owner))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        return 0
+
     count = 0
     for entry in path.iterdir():
         if not entry.is_file():
@@ -105,7 +109,7 @@ async def scan_directory(owner: str, folder: str, db: AsyncSession) -> int:
             continue
 
         record = ExpenseRecord(
-            owner_id=None,
+            owner_id=user.id,
             image_hash=file_hash,
             status="DETECTADO",
             source_filename=entry.name,

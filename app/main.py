@@ -1,5 +1,6 @@
 """Aplicacion principal FastAPI — Gastos IA."""
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -11,10 +12,32 @@ from app.expenses.routes import router as expenses_router
 from app.catalogs.routes import router as catalogs_router
 from app.history.routes import router as history_router
 
+_monitor_task = None
+_worker_task = None
+
+
+async def _start_monitor():
+    from app.images.monitor import monitor_loop
+    await monitor_loop()
+
+
+async def _start_worker():
+    from app.expenses.queue import worker_loop
+    await worker_loop()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _monitor_task, _worker_task
+    _monitor_task = asyncio.create_task(_start_monitor())
+    _worker_task = asyncio.create_task(_start_worker())
+    print("[App] Monitor y worker FIFO iniciados")
     yield
+    if _monitor_task:
+        _monitor_task.cancel()
+    if _worker_task:
+        _worker_task.cancel()
+    print("[App] Monitor y worker detenidos")
 
 
 app = FastAPI(
