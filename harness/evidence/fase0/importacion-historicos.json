@@ -1,0 +1,41 @@
+{
+  "skill_name": "skill-fase0-tecnica",
+  "phase": "fase0",
+  "timestamp": "2026-07-28T13:00:00Z",
+  "status": "passed",
+  "duration_seconds": 45.0,
+  "summary": "618 registros historicos importados a _Control desde 7 pestañas mensuales (Enero-Julio 2026). 10 grupos detectados con sus consecutivos maximos. 100 duplicados por descripcion exacta descartados. Los nuevos registros continuaran las secuencias a partir del consecutivo maximo + 1 de cada grupo.",
+  "metrics": {
+    "total_records_imported": 618,
+    "duplicates_skipped": 100,
+    "groups_detected": 10,
+    "sheets_read": 7,
+    "control_created": true
+  },
+  "groups": {
+    "BORAMAR": {"max_consecutive": 2, "next": 3},
+    "BUNG": {"max_consecutive": 3, "next": 4},
+    "ESTRADOS": {"max_consecutive": 4, "next": 5},
+    "OP": {"max_consecutive": 38, "next": 39},
+    "PISTANESS": {"max_consecutive": 4, "next": 5},
+    "PSAV": {"max_consecutive": 12, "next": 13},
+    "STRINGLIGHTS": {"max_consecutive": 13, "next": 14},
+    "VAL": {"max_consecutive": 15, "next": 16},
+    "VALC": {"max_consecutive": 3, "next": 4},
+    "XCARET": {"max_consecutive": 9, "next": 10}
+  },
+  "checks": [
+    {"id": "C01", "description": "Lectura de pestañas mensuales", "status": "passed", "detail": "7 pestañas (Enero-Julio)"},
+    {"id": "C02", "description": "Parseo de descripciones", "status": "passed", "detail": "formato GRUPO-YYMMDD -N - DESC"},
+    {"id": "C03", "description": "Deteccion de duplicados por descripcion", "status": "passed", "detail": "100 duplicados exactos descartados"},
+    {"id": "C04", "description": "Calculo de consecutivos maximos", "status": "passed", "detail": "10 grupos con secuencias"},
+    {"id": "C05", "description": "Escritura en _Control", "status": "passed", "detail": "618 registros, 16 columnas cada uno"}
+  ],
+  "artifacts_generated": [],
+  "errors": [],
+  "warnings": ["El sistema anterior reinicia consecutivos por mes. Los consecutivos importados reflejan la secuencia original por grupo, no por mes."],
+  "next_steps": [
+    "Ejecutar benchmark_modelos.py cuando Ollama este instalado en la VM",
+    "Cerrar Fase 0 con quality-gate"
+  ]
+}

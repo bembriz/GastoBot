@@ -1,0 +1,33 @@
+{
+  "skill_name": "skill-fase0-tecnica",
+  "phase": "fase0",
+  "timestamp": "2026-07-28T12:50:00Z",
+  "status": "passed",
+  "duration_seconds": 3.8,
+  "summary": "Google Sheets API validada exitosamente. Autenticacion con cuenta de servicio funcionando. Spreadsheet 'Reporte de gastos 2026' accesible con 10 pestañas existentes. _Control creada con encabezados minimos. Escritura/lectura en pestaña de prueba verificada con integridad de datos. 8/8 checks pasados.",
+  "metrics": {
+    "tests_total": 8,
+    "tests_passed": 8,
+    "tests_failed": 0,
+    "spreadsheet_title": "Reporte de gastos 2026",
+    "existing_sheets": ["Enero", "Febrero", "Febrero2", "Marzo", "Marzo 2", "Abril", "Mayo", "Junio", "Julio", "correcciones"],
+    "sheets_count": 10,
+    "control_created": true
+  },
+  "checks": [
+    {"id": "C01", "description": "Credential JSON encontrado", "status": "passed", "detail": "cred/gastos-ia-503821-65a3dfc51879.json"},
+    {"id": "C02", "description": "Spreadsheet ID configurado", "status": "passed", "detail": "ID configurado"},
+    {"id": "C03", "description": "gspread instalado", "status": "passed", "detail": "disponible"},
+    {"id": "C04", "description": "Autenticacion cuenta de servicio", "status": "passed", "detail": "autenticada"},
+    {"id": "C05", "description": "Apertura spreadsheet", "status": "passed", "detail": "'Reporte de gastos 2026', 10 pestañas"},
+    {"id": "C06", "description": "_Control creada", "status": "passed", "detail": "creada con encabezados minimos"},
+    {"id": "C07", "description": "Escritura/lectura de datos", "status": "passed", "detail": "datos integros"},
+    {"id": "C08", "description": "Limpieza pestaña prueba", "status": "passed", "detail": "'_Test_Fase0' eliminada"}
+  ],
+  "artifacts_generated": [],
+  "errors": [],
+  "warnings": [],
+  "next_steps": [
+    "Ejecutar benchmark_modelos.py cuando Ollama este instalado"
+  ]
+}

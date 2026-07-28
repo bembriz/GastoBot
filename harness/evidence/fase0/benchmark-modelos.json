@@ -1,0 +1,9 @@
+{
+  "skill_name": "skill-fase0-tecnica",
+  "phase": "fase0",
+  "timestamp": "2026-07-28T12:30:00Z",
+  "status": "blocked",
+  "summary": "Benchmark bloqueado: Ollama no instalado en este entorno. Script benchmark_modelos.py listo con soporte para --quick (25 imagenes), --model (2b|4b), y --output. Al ejecutarse comparara Qwen3-VL 2B vs 4B sobre 92 imagenes en ejemplos/.",
+  "blocker": "Ollama no instalado",
+  "action": "curl -fsSL https://ollama.com/install.sh | sh && ollama pull qwen3-vl:2b && ollama pull qwen3-vl:4b"
+}

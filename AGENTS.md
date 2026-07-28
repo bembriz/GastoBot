@@ -9,7 +9,7 @@ phases:
   fase0:
     name: "Prueba Técnica"
     description: "Validar Hyper-V, red, Qwen3-VL, PostgreSQL, Google Sheets, históricos y mecanismo de secretos"
-    status: pending
+    status: completed
     skills:
       - skill-fase0-tecnica
     preconditions:
@@ -32,7 +32,7 @@ phases:
   fase1:
     name: "Núcleo"
     description: "Base de datos, usuarios, carpetas, monitor SMB, cola FIFO, extracción multimodal, estados y logs"
-    status: pending
+    status: in_progress
     skills:
       - skill-database
       - skill-authentication
