@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gastos IA - Dashboard</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>
+    :root {
+      --bg: #f8f9fa;
+      --card-bg: #ffffff;
+      --text: #212529;
+      --border: #dee2e6;
+      --primary: #0d6efd;
+      --warning: #ffc107;
+      --danger: #dc3545;
+      --success: #198754;
+      --muted: #6c757d;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); }
+    .header { background: var(--card-bg); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { font-size: 1.25rem; }
+    .header .user-info { display: flex; align-items: center; gap: 12px; }
+    .header .role-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; background: var(--primary); color: white; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 16px 24px; }
+    nav { display: flex; gap: 16px; margin-bottom: 16px; }
+    nav a { color: var(--muted); text-decoration: none; padding: 6px 0; border-bottom: 2px solid transparent; }
+    nav a.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .expense-table { width: 100%; border-collapse: collapse; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .expense-table th { text-align: left; padding: 10px 12px; background: #f8f9fa; border-bottom: 2px solid var(--border); font-size: 0.8rem; text-transform: uppercase; color: var(--muted); }
+    .expense-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 0.875rem; }
+    .expense-table tr:hover { background: #f8f9fa; }
+    .expense-table tr:last-child td { border-bottom: none; }
+    .thumbnail { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; }
+    .status-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; white-space: nowrap; }
+    .status-badge.EN_COLA { background: #e9ecef; color: #495057; }
+    .status-badge.ANALIZANDO { background: #cfe2ff; color: #084298; }
+    .status-badge.LISTO_PARA_REVISION { background: #d1e7dd; color: #0a3622; }
+    .status-badge.REQUIERE_REVISION { background: #fff3cd; color: #664d03; }
+    .status-badge.ENVIADO { background: #d1e7dd; color: #0a3622; }
+    .status-badge.ERROR_PROCESAMIENTO { background: #f8d7da; color: #58151c; }
+    .confidence-low { color: var(--danger); font-weight: 600; }
+    .confidence-medium { color: var(--warning); }
+    .warning-indicator { display: inline-flex; align-items: center; gap: 4px; color: var(--warning); font-size: 0.75rem; }
+    htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: inline; }
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+    .empty-state p { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>Gastos IA</h1>
+    <div class="user-info">
+      <span>{{ current_user.username }}</span>
+      <span class="role-badge">{{ current_user.role }}</span>
+      <a href="/logout">Salir</a>
+    </div>
+  </header>
+
+  <div class="container">
+    <nav>
+      <a href="/dashboard" class="active">Pendientes</a>
+      <a href="/history">Historial</a>
+      {% if current_user.role == 'admin' %}
+      <a href="/catalogs">Catálogos</a>
+      {% endif %}
+    </nav>
+
+    <!-- HTMX Polling target: entire expense list updates via polling -->
+    <div
+      id="expense-list"
+      hx-get="/expenses/list"
+      hx-trigger="every 3s"
+      hx-swap="innerHTML"
+    >
+      <!-- Spinner while loading -->
+      <div class="htmx-indicator" style="text-align:center;padding:20px;">Cargando...</div>
+
+      {% if expenses|length == 0 %}
+      <div class="empty-state">
+        <h3>No hay comprobantes pendientes</h3>
+        <p>Copia una imagen de ticket en la carpeta <code>pendientes</code> para comenzar.</p>
+      </div>
+      {% else %}
+      <table class="expense-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Archivo</th>
+            <th>Fecha</th>
+            <th>Monto</th>
+            <th>Banco</th>
+            <th>Estado</th>
+            <th>Advertencias</th>
+            {% if current_user.role == 'admin' %}
+            <th>Propietario</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for expense in expenses %}
+          <tr id="expense-{{ expense.record_id }}"
+              hx-get="/expenses/{{ expense.record_id }}/status"
+              hx-trigger="every 3s"
+              hx-swap="outerHTML"
+          >
+            <td>
+              <a href="/expenses/{{ expense.record_id }}">
+                <img src="/images/{{ expense.record_id }}/thumbnail"
+                     alt="Miniatura"
+                     class="thumbnail"
+                     loading="lazy">
+              </a>
+            </td>
+            <td>
+              <a href="/expenses/{{ expense.record_id }}">{{ expense.source_filename }}</a>
+            </td>
+            <td>{{ expense.transaction_date or '—' }}</td>
+            <td>{{ '${:,.2f}'.format(expense.amount) if expense.amount else '—' }}</td>
+            <td>{{ expense.bank or '—' }}</td>
+            <td>
+              <span class="status-badge {{ expense.status }}">
+                {{ expense.status.replace('_', ' ') }}
+              </span>
+            </td>
+            <td>
+              {% if expense.has_low_confidence %}
+              <span class="warning-indicator" title="Campos de baja confianza">
+                &#9888; {{ expense.low_confidence_fields|join(', ') }}
+              </span>
+              {% endif %}
+            </td>
+            {% if current_user.role == 'admin' %}
+            <td>{{ expense.owner }}</td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,89 @@
+# Checklist — skill-google-sheets
+
+## Pre-ejecución
+- [ ] Fase 2 completada (web UI, catálogos, historial)
+- [ ] GASTOSIA_GOOGLE_CREDENTIALS_PATH configurado y archivo existe
+- [ ] GASTOSIA_GOOGLE_SPREADSHEET_ID configurado
+- [ ] Cuenta de servicio con acceso de editor al spreadsheet
+- [ ] Google Sheets API habilitada en Google Cloud Console
+- [ ] google-auth y google-api-python-client en pyproject.toml
+- [ ] Catálogos (categorías y cuentas) poblados en PostgreSQL
+- [ ] Registros en LISTO_PARA_REVISION o REQUIERE_REVISION disponibles
+- [ ] `uv sync --frozen` exitoso
+- [ ] Branch `arnes` activa
+
+## Ejecución
+- [ ] Paso 1: app/sheets/client.py con autenticación, verify_connectivity
+- [ ] Paso 1: app/sheets/errors.py con excepciones personalizadas
+- [ ] Paso 1: Rate limiting con exponential backoff (3 intentos)
+- [ ] Paso 1: Lazy initialization del servicio Google Sheets
+- [ ] Paso 2: app/sheets/sync.py con CatalogSync
+- [ ] Paso 2: sync_categories_from_sheets() — lee _Categorias → PostgreSQL
+- [ ] Paso 2: sync_accounts_from_sheets() — lee _Cuentas → PostgreSQL
+- [ ] Paso 2: sync_categories_to_sheets() — PostgreSQL → _Categorias
+- [ ] Paso 2: sync_accounts_to_sheets() — PostgreSQL → _Cuentas
+- [ ] Paso 2: Crear _Categorias y _Cuentas si no existen
+- [ ] Paso 3: app/sheets/tabs.py con gestión de pestañas
+- [ ] Paso 3: get_month_tab_name() — "Mes-AA" en español
+- [ ] Paso 3: ensure_month_tab() — crea si no existe + 16 headers
+- [ ] Paso 3: 16 encabezados en orden correcto (PRD 13.1)
+- [ ] Paso 3: find_next_empty_row() — primera fila vacía después de headers
+- [ ] Paso 4: app/sheets/control.py con _Control operations
+- [ ] Paso 4: ensure_control_sheet() con 15 columnas
+- [ ] Paso 4: add_control_entry() — append row
+- [ ] Paso 4: update_control_entry() — buscar por record_id y actualizar
+- [ ] Paso 4: delete_control_entry() — eliminar fila
+- [ ] Paso 4: get_max_consecutive() — max de _Control + PostgreSQL
+- [ ] Paso 4: find_by_hash() — detección de duplicados
+- [ ] Paso 5: app/sheets/consecutive.py con ConsecutiveManager
+- [ ] Paso 5: assign_next() con advisory lock por group_code
+- [ ] Paso 5: validate_assignment() antes de escribir
+- [ ] Paso 5: Sin registros previos → empieza en 1
+- [ ] Paso 6: app/sheets/sender.py con ExpenseSender
+- [ ] Paso 6: send_expense_to_sheets() — 11 passos PRD 9.4
+- [ ] Paso 6: Verificar internet (paso 1)
+- [ ] Paso 6: Sincronizar catálogos (paso 2)
+- [ ] Paso 6: Consultar _Control (paso 3)
+- [ ] Paso 6: Revalidar duplicados (paso 4)
+- [ ] Paso 6: Recalcular consecutivo (paso 5)
+- [ ] Paso 6: Determinar pestaña (paso 6)
+- [ ] Paso 6: Encontrar fila vacía (paso 7)
+- [ ] Paso 6: Construir row con 16 columnas mapeadas (paso 8)
+- [ ] Paso 6: Insertar fila (paso 9)
+- [ ] Paso 6: Actualizar _Control (paso 10)
+- [ ] Paso 6: Auditoría (paso 11)
+- [ ] Paso 6: Estado ENVIANDO durante operación, ENVIADO al éxito
+- [ ] Paso 6: Imagen movida a procesados/YYYY/MM tras éxito
+- [ ] Paso 7: app/sheets/reconciler.py con update flow
+- [ ] Paso 7: update_expense_in_sheets() — mismo mes
+- [ ] Paso 7: update_expense_in_sheets() — cambio de mes (insert + delete)
+- [ ] Paso 7: Manejo fila alterada manualmente (14.3)
+- [ ] Paso 8: Offline mode con PENDIENTE_DE_ENVIO
+- [ ] Paso 8: retry_pending_sends() — procesa cola offline
+- [ ] Paso 8: Verificación de conectividad antes de cada operación
+- [ ] Paso 8: Botón "Reintentar envíos pendientes" en UI
+- [ ] Paso 9: reconcile_record() — comparación local vs Sheets
+- [ ] Paso 9: resolve_using_local() — sobrescribir Sheets con local
+- [ ] Paso 9: resolve_using_sheets() — sobrescribir local con Sheets
+- [ ] Paso 10: Tests unitarios (mock Google API) >= 90% cobertura
+- [ ] Paso 10: Tests de integración con spreadsheet de prueba
+- [ ] Paso 10: Tests E2E flujo completo
+- [ ] Paso 11: Evidencia JSON generada
+- [ ] Paso 11: Evidencia MD generada
+
+## Post-ejecución
+- [ ] Autenticación Google Sheets API funcional
+- [ ] _Categorias y _Cuentas sincronizados bidireccionalmente
+- [ ] Pestaña mensual creada con nombre "Mes-AA" y 16 headers
+- [ ] Consecutivos asignados sin colisiones
+- [ ] Advisory lock funciona para concurrencia
+- [ ] Envío exitoso: registro en Sheets + _Control + imagen movida
+- [ ] Actualización mismo mes: fila sobrescrita correctamente
+- [ ] Cambio de mes: registro movido entre pestañas
+- [ ] Offline: registro queda PENDIENTE_DE_ENVIO
+- [ ] Reintento: registro se envía al volver internet
+- [ ] Conciliación detecta diferencias correctamente
+- [ ] Rate limiting no pierde datos
+- [ ] Cero secretos en código/logs/Git
+- [ ] Cobertura >= 90%
+- [ ] Lint, mypy, ruff pasan
