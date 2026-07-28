@@ -4,19 +4,18 @@ import uuid
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.permissions import get_current_user, require_admin, session_cookie_name, verify_session
 from app.database.models import CatalogCache, User
 from app.database.session import get_db
+from app.templates import render
 
 router = APIRouter(prefix="/catalogs")
-templates = Jinja2Templates(directory="templates")
 
 
-async def get_user(request: Request, db: AsyncSession) -> User | None:
+async def get_user_req(request: Request, db: AsyncSession) -> User | None:
     token = request.cookies.get(session_cookie_name())
     if not token:
         return None
@@ -29,7 +28,7 @@ async def get_user(request: Request, db: AsyncSession) -> User | None:
 
 @router.get("", response_class=HTMLResponse)
 async def catalogs_page(request: Request, db: AsyncSession = Depends(get_db)):
-    user = await get_user(request, db)
+    user = await get_user_req(request, db)
     if not user:
         return RedirectResponse("/login")
     if user.role != "admin":
@@ -41,10 +40,9 @@ async def catalogs_page(request: Request, db: AsyncSession = Depends(get_db)):
     accs = await db.execute(
         select(CatalogCache).where(CatalogCache.catalog_type == "cuenta").order_by(CatalogCache.code)
     )
-    return templates.TemplateResponse("catalogs.html", {
-        "request": request, "user": user,
-        "categories": cats.scalars().all(), "accounts": accs.scalars().all(),
-    })
+    return HTMLResponse(render("catalogs.html",
+        request=request, user=user,
+        categories=cats.scalars().all(), accounts=accs.scalars().all()))
 
 
 @router.post("/categoria")
@@ -57,7 +55,7 @@ async def create_category(
     cat = CatalogCache(id=uuid.uuid4(), catalog_type="categoria", code=code.upper(), description=description)
     db.add(cat)
     await db.commit()
-    return HTMLResponse(f'<div id="catalog-list" hx-get="/catalogs" hx-trigger="load" hx-swap="outerHTML"></div>')
+    return HTMLResponse("OK")
 
 
 @router.put("/categoria/{cat_id}/toggle")
@@ -71,7 +69,7 @@ async def toggle_category(
     if cat:
         cat.is_active = not cat.is_active
         await db.commit()
-    return HTMLResponse(f'<div id="catalog-list" hx-get="/catalogs" hx-trigger="load" hx-swap="outerHTML"></div>')
+    return HTMLResponse("OK")
 
 
 @router.post("/cuenta")
@@ -84,7 +82,7 @@ async def create_account(
     acc = CatalogCache(id=uuid.uuid4(), catalog_type="cuenta", code=code, description=description)
     db.add(acc)
     await db.commit()
-    return HTMLResponse(f'<div id="catalog-list" hx-get="/catalogs" hx-trigger="load" hx-swap="outerHTML"></div>')
+    return HTMLResponse("OK")
 
 
 @router.put("/cuenta/{acc_id}/toggle")
@@ -98,4 +96,4 @@ async def toggle_account(
     if acc:
         acc.is_active = not acc.is_active
         await db.commit()
-    return HTMLResponse(f'<div id="catalog-list" hx-get="/catalogs" hx-trigger="load" hx-swap="outerHTML"></div>')
+    return HTMLResponse("OK")

@@ -22,13 +22,8 @@
             <td>{{ r.bank or '-' }}</td>
             <td><span class="status status-{{ r.status }}">{{ r.status.replace('_', ' ') }}</span></td>
             <td>
-                {% if r.confidence_json %}
-                    {% set min_conf = (r.confidence_json.values()|min) if r.confidence_json is mapping else 1 %}
-                    {% if min_conf < 0.7 %}
-                        <span class="warn-badge">Baja</span>
-                    {% elif min_conf < 0.9 %}
-                        <span class="warn-badge" style="background:#f59e0b;">Media</span>
-                    {% endif %}
+                {% if r.status in ('REQUIERE_REVISION',) %}
+                    <span class="warn-badge">Baja confianza</span>
                 {% endif %}
             </td>
             {% if user.role == 'admin' %}

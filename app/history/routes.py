@@ -4,19 +4,18 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.permissions import get_current_user, session_cookie_name, verify_session
 from app.database.models import ExpenseRecord, User
 from app.database.session import get_db
+from app.templates import render
 
 router = APIRouter(prefix="/history")
-templates = Jinja2Templates(directory="templates")
 
 
-async def get_user(request: Request, db: AsyncSession) -> User | None:
+async def get_user_req(request: Request, db: AsyncSession) -> User | None:
     token = request.cookies.get(session_cookie_name())
     if not token:
         return None
@@ -33,7 +32,7 @@ async def history_page(
     q: str = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await get_user(request, db)
+    user = await get_user_req(request, db)
     if not user:
         return RedirectResponse("/login")
 
@@ -52,9 +51,8 @@ async def history_page(
     result = await db.execute(query)
     records = result.scalars().all()
 
-    return templates.TemplateResponse("history.html", {
-        "request": request, "user": user, "records": records, "q": q or "",
-    })
+    return HTMLResponse(render("history.html",
+        request=request, user=user, records=records, q=q or ""))
 
 
 @router.put("/{record_id}")

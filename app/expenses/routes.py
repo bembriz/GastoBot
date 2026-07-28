@@ -5,7 +5,6 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -14,12 +13,12 @@ from app.auth.permissions import get_current_user, require_owner_or_admin
 from app.auth.session import session_cookie_name, verify_session
 from app.database.models import CatalogCache, ExpenseRecord, ImageFile, ProcessingQueue, User
 from app.database.session import get_db
+from app.templates import render
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 
 
-async def get_user_from_request(request: Request, db: AsyncSession) -> User | None:
+async def get_user(request: Request, db: AsyncSession) -> User | None:
     token = request.cookies.get(session_cookie_name())
     if not token:
         return None
@@ -32,28 +31,28 @@ async def get_user_from_request(request: Request, db: AsyncSession) -> User | No
 
 @router.get("/", response_class=HTMLResponse)
 async def root(request: Request, db: AsyncSession = Depends(get_db)):
-    user = await get_user_from_request(request, db)
+    user = await get_user(request, db)
     if user:
         return RedirectResponse("/dashboard")
-    return templates.TemplateResponse("login.html", {"request": request, "user": None})
+    return HTMLResponse(render("login.html", request=request, user=None))
 
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "user": None})
+    return HTMLResponse(render("login.html", request=request, user=None))
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
-    user = await get_user_from_request(request, db)
+    user = await get_user(request, db)
     if not user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("dashboard.html", {"request": request, "user": user})
+    return HTMLResponse(render("dashboard.html", request=request, user=user))
 
 
 @router.get("/dashboard/status", response_class=HTMLResponse)
 async def dashboard_status(request: Request, db: AsyncSession = Depends(get_db)):
-    user = await get_user_from_request(request, db)
+    user = await get_user(request, db)
     if not user:
         return HTMLResponse("")
 
@@ -75,7 +74,7 @@ async def dashboard_status(request: Request, db: AsyncSession = Depends(get_db))
     owners = {}
     if owner_ids:
         users_result = await db.execute(select(User).where(User.id.in_(owner_ids)))
-        owners = {u.id: u for u in users_result.scalars().all()}
+        owners = {u.id: u.username for u in users_result.scalars().all()}
 
     record_data = []
     for r in records:
@@ -87,19 +86,17 @@ async def dashboard_status(request: Request, db: AsyncSession = Depends(get_db))
             "bank": r.bank,
             "status": r.status,
             "confidence_json": r.confidence_json,
-            "owner_name": owners.get(r.owner_id, type("U", (), {"username": "?"})()).username if r.owner_id else None,
+            "owner_name": owners.get(r.owner_id, "?"),
         })
 
-    return templates.TemplateResponse("expense_list.html", {
-        "request": request, "user": user, "records": record_data,
-    })
+    return HTMLResponse(render("expense_list.html", request=request, user=user, records=record_data))
 
 
 @router.get("/expenses/{record_id}", response_class=HTMLResponse)
 async def expense_detail(
     record_id: str, request: Request, db: AsyncSession = Depends(get_db)
 ):
-    user = await get_user_from_request(request, db)
+    user = await get_user(request, db)
     if not user:
         return RedirectResponse("/login")
 
@@ -115,20 +112,13 @@ async def expense_detail(
     cats = await db.execute(
         select(CatalogCache).where(CatalogCache.catalog_type == "categoria", CatalogCache.is_active == True)
     )
-    categories = cats.scalars().all()
-
-    accs = await db.execute(
+    accounts = await db.execute(
         select(CatalogCache).where(CatalogCache.catalog_type == "cuenta", CatalogCache.is_active == True)
     )
-    accounts = accs.scalars().all()
 
-    return templates.TemplateResponse("expense_detail.html", {
-        "request": request,
-        "user": user,
-        "record": record,
-        "categories": categories,
-        "accounts": accounts,
-    })
+    return HTMLResponse(render("expense_detail.html",
+        request=request, user=user, record=record,
+        categories=cats.scalars().all(), accounts=accounts.scalars().all()))
 
 
 @router.put("/expenses/{record_id}")
@@ -157,11 +147,9 @@ async def update_expense(
     if ticket_description is not None:
         record.ticket_description = ticket_description
     if category_id:
-        from uuid import UUID
-        record.category_id = UUID(category_id)
+        record.category_id = category_id
     if account_id:
-        from uuid import UUID
-        record.account_id = UUID(account_id)
+        record.account_id = account_id
     if amount is not None:
         record.amount = amount
     if bank is not None:
@@ -171,10 +159,6 @@ async def update_expense(
 
     if record.group_code and record.consecutive and record.ticket_description:
         record.final_description = f"{record.group_code}-{record.consecutive}-{record.ticket_description}"
-
-    if record.transaction_date and record.group_code and record.amount and record.bank and record.transaction_type:
-        if record.status in ("LISTO_PARA_REVISION", "REQUIERE_REVISION", "PENDIENTE_DE_ENVIO"):
-            pass
 
     await db.commit()
     return HTMLResponse('<span style="color:var(--success);">✓ Guardado</span>')
