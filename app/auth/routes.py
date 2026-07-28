@@ -2,7 +2,8 @@
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,11 +13,11 @@ from app.auth.permissions import get_current_user
 from app.auth.session import (
     MAX_AGE_SECONDS,
     create_session,
-    delete_session,
     session_cookie_name,
 )
 from app.database.models import User
 from app.database.session import get_db
+from app.templates import render
 
 router = APIRouter(prefix="", tags=["auth"])
 
@@ -25,16 +26,21 @@ LOCKOUT_MINUTES = 15
 MIN_PASSWORD_LENGTH = 8
 
 
-class LoginResponse(BaseModel):
-    username: str
-    role: str
-    password_change_required: bool
+def set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=session_cookie_name(),
+        value=token,
+        max_age=MAX_AGE_SECONDS,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        path="/",
+    )
 
-    model_config = {"from_attributes": True}
 
-
-@router.post("/login", response_model=LoginResponse)
+@router.post("/login")
 async def login(
+    request: Request,
     response: Response,
     username: str = Form(...),
     password: str = Form(...),
@@ -44,13 +50,17 @@ async def login(
     user = result.scalar_one_or_none()
 
     if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales invalidas")
+        return HTMLResponse(
+            render("login.html", request=request, user=None, error="Credenciales invalidas"),
+            status_code=401,
+        )
 
     if user.locked_until and user.locked_until > datetime.now(timezone.utc):
         remaining = int((user.locked_until - datetime.now(timezone.utc)).total_seconds() / 60)
-        raise HTTPException(
+        return HTMLResponse(
+            render("login.html", request=request, user=None,
+                   error=f"Cuenta bloqueada. Intente en {remaining} minutos"),
             status_code=423,
-            detail=f"Cuenta bloqueada. Intente de nuevo en {remaining} minutos",
         )
 
     if not verify_password(password, user.password_hash):
@@ -59,9 +69,10 @@ async def login(
             user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_MINUTES)
         await db.commit()
         remaining = max(0, MAX_FAILED_ATTEMPTS - user.failed_attempts)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Credenciales invalidas. {remaining} intentos restantes",
+        return HTMLResponse(
+            render("login.html", request=request, user=None,
+                   error=f"Credenciales invalidas. {remaining} intentos restantes"),
+            status_code=401,
         )
 
     user.failed_attempts = 0
@@ -70,21 +81,16 @@ async def login(
     await db.commit()
 
     token = create_session(user.id, user.username, user.role)
-    response.set_cookie(
-        key=session_cookie_name(),
-        value=token,
-        max_age=MAX_AGE_SECONDS,
-        httponly=True,
-        secure=True,
-        samesite="strict",
-        path="/",
-    )
+    set_session_cookie(response, token)
 
-    return LoginResponse(
-        username=user.username,
-        role=user.role,
-        password_change_required=user.password_change_required,
-    )
+    if user.password_change_required:
+        return HTMLResponse(
+            render("login.html", request=request, user=None,
+                   change_password=True),
+        )
+
+    response.headers["HX-Redirect"] = "/dashboard"
+    return HTMLResponse("")
 
 
 @router.post("/logout")
@@ -93,33 +99,33 @@ async def logout(response: Response):
         key=session_cookie_name(),
         path="/",
         httponly=True,
-        secure=True,
-        samesite="strict",
+        samesite="lax",
     )
-    return {"message": "Sesion cerrada"}
+    response.headers["HX-Redirect"] = "/login"
+    return HTMLResponse("")
 
 
 @router.post("/change-password")
 async def change_password(
+    request: Request,
+    response: Response,
     current_password: str = Form(...),
     new_password: str = Form(...),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if not verify_password(current_password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contrasena actual incorrecta")
+        return HTMLResponse('<span class="error">Contrasena actual incorrecta</span>')
 
     if len(new_password) < MIN_PASSWORD_LENGTH:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"La nueva contrasena debe tener al menos {MIN_PASSWORD_LENGTH} caracteres",
-        )
+        return HTMLResponse(f'<span class="error">Minimo {MIN_PASSWORD_LENGTH} caracteres</span>')
 
     user.password_hash = hash_password(new_password)
     user.password_change_required = False
     await db.commit()
 
-    return {"message": "Contrasena actualizada. Inicie sesion nuevamente."}
+    response.headers["HX-Redirect"] = "/dashboard"
+    return HTMLResponse("")
 
 
 @router.get("/api/me")

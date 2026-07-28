@@ -2,6 +2,21 @@
 {% block content %}
 <div class="login-box card">
     <h1>Gastos IA</h1>
+    {% if change_password %}
+    <form hx-post="/change-password" hx-target="#login-error" hx-swap="innerHTML">
+        <p style="margin-bottom:12px;color:var(--primary);">Debes cambiar tu contraseña</p>
+        <div class="form-group">
+            <label>Contraseña actual</label>
+            <input type="password" name="current_password" required autofocus>
+        </div>
+        <div class="form-group">
+            <label>Nueva contraseña</label>
+            <input type="password" name="new_password" required minlength="8">
+        </div>
+        <div id="login-error">{% if error %}<p class="error">{{ error }}</p>{% endif %}</div>
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:8px;">Cambiar</button>
+    </form>
+    {% else %}
     <form hx-post="/login" hx-target="#login-error" hx-swap="innerHTML">
         <div class="form-group">
             <label>Usuario</label>
@@ -11,8 +26,9 @@
             <label>Contraseña</label>
             <input type="password" name="password" required>
         </div>
-        <div id="login-error"></div>
+        <div id="login-error">{% if error %}<p class="error">{{ error }}</p>{% endif %}</div>
         <button type="submit" class="btn btn-primary" style="width:100%;margin-top:8px;">Entrar</button>
     </form>
+    {% endif %}
 </div>
 {% endblock %}
