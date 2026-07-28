@@ -1,0 +1,17 @@
+{
+  "skill_name": "skill-image-extraction",
+  "phase": "fase1",
+  "timestamp": "2026-07-28T14:30:00Z",
+  "status": "passed",
+  "summary": "Modulo de extraccion multimodal con Ollama + Qwen3-VL. Envia imagenes en base64, parsea JSON robusto (soporta markdown, texto extra), normaliza campos (amount, bank UPPER, transaction_type), calcula confianza. Timeout 300s.",
+  "metrics": {"checks_passed": 7},
+  "checks": [
+    {"id": "C01", "description": "Cliente async httpx", "status": "passed"},
+    {"id": "C02", "description": "Prompt estructurado", "status": "passed", "detail": "5 campos + confidence"},
+    {"id": "C03", "description": "Parseo JSON robusto", "status": "passed", "detail": "soporta markdown ```json, texto extra"},
+    {"id": "C04", "description": "Validacion campos requeridos", "status": "passed"},
+    {"id": "C05", "description": "Normalizacion", "status": "passed", "detail": "amount str->float, bank UPPER, transaction_type normalizado"},
+    {"id": "C06", "description": "Confianza default", "status": "passed", "detail": "0.5 por campo si no presente"},
+    {"id": "C07", "description": "Timeout 300s", "status": "passed"}
+  ]
+}

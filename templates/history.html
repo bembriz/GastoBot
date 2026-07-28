@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Historial de gastos</h2>
+
+<form hx-get="/history" hx-target="#history-table" hx-trigger="keyup delay:300ms from:#search, change from:#filter-bank" style="margin:16px 0;">
+    <div class="flex">
+        <input type="text" id="search" name="q" placeholder="Buscar..." value="{{ q }}" style="flex:2;">
+    </div>
+</form>
+
+<div id="history-table">
+    {% if records %}
+    <table>
+        <thead>
+            <tr>
+                <th>Fecha</th>
+                <th>Descripción</th>
+                <th>Monto</th>
+                <th>Banco</th>
+                <th>Estado</th>
+                <th>Sheets</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in records %}
+            <tr>
+                <td>{{ r.transaction_date or '-' }}</td>
+                <td>{{ r.final_description or r.ticket_description or '-' }}</td>
+                <td>{% if r.amount %}${{ "%.2f"|format(r.amount) }}{% endif %}</td>
+                <td>{{ r.bank or '-' }}</td>
+                <td><span class="status status-{{ r.status }}">{{ r.status.replace('_',' ') }}</span></td>
+                <td>{{ r.sheet_name or '-' }}{% if r.sheet_row %} (fila {{ r.sheet_row }}){% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color:var(--muted);text-align:center;padding:40px;">Sin resultados</p>
+    {% endif %}
+</div>
+{% endblock %}

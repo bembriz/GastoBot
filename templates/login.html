@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="login-box card">
+    <h1>Gastos IA</h1>
+    <form hx-post="/login" hx-target="#login-error" hx-swap="innerHTML">
+        <div class="form-group">
+            <label>Usuario</label>
+            <input type="text" name="username" required autofocus>
+        </div>
+        <div class="form-group">
+            <label>Contraseña</label>
+            <input type="password" name="password" required>
+        </div>
+        <div id="login-error"></div>
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:8px;">Entrar</button>
+    </form>
+</div>
+{% endblock %}

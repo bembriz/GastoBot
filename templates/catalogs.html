@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Catálogos</h2>
+
+<div class="flex" style="gap:24px;margin-top:16px;">
+    <div class="card" style="flex:1;">
+        <h3>Categorías</h3>
+        <form hx-post="/catalogs/categoria" hx-target="#cat-msg" hx-swap="innerHTML" style="margin-bottom:16px;">
+            <div class="flex">
+                <input type="text" name="code" placeholder="Código" required style="flex:1;">
+                <input type="text" name="description" placeholder="Descripción" required style="flex:2;">
+                <button type="submit" class="btn btn-primary">+</button>
+            </div>
+        </form>
+        <div id="cat-msg"></div>
+        <table>
+            {% for c in categories %}
+            <tr>
+                <td>{{ c.code }}</td>
+                <td>{{ c.description }}</td>
+                <td>
+                    <button class="btn" style="font-size:12px;"
+                            hx-put="/catalogs/categoria/{{ c.id }}/toggle"
+                            hx-swap="none">
+                        {{ 'Activo' if c.is_active else 'Inactivo' }}
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <div class="card" style="flex:1;">
+        <h3>Cuentas</h3>
+        <form hx-post="/catalogs/cuenta" hx-target="#acc-msg" hx-swap="innerHTML" style="margin-bottom:16px;">
+            <div class="flex">
+                <input type="text" name="code" placeholder="Código" required style="flex:1;">
+                <input type="text" name="description" placeholder="Descripción" required style="flex:2;">
+                <button type="submit" class="btn btn-primary">+</button>
+            </div>
+        </form>
+        <div id="acc-msg"></div>
+        <table>
+            {% for a in accounts %}
+            <tr>
+                <td>{{ a.code }}</td>
+                <td>{{ a.description }}</td>
+                <td>
+                    <button class="btn" style="font-size:12px;"
+                            hx-put="/catalogs/cuenta/{{ a.id }}/toggle"
+                            hx-swap="none">
+                        {{ 'Activo' if a.is_active else 'Inactivo' }}
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{
+  "skill_name": "skill-database",
+  "phase": "fase1",
+  "timestamp": "2026-07-28T13:30:00Z",
+  "status": "passed",
+  "summary": "Schema PostgreSQL completo con 9 tablas, 24 indices, constraints CHECK, FKs y unique parcial. Alembic configurado con migraciones async (upgrade/downgrade verificados). Bloqueo de consecutivos via pg_advisory_xact_lock. Conexion SQLAlchemy + asyncpg funcional.",
+  "metrics": {
+    "tables": 9,
+    "indices": 12,
+    "constraints_check": 6,
+    "constraints_unique": 2,
+    "foreign_keys": 12,
+    "migration_up": true,
+    "migration_down": true
+  },
+  "checks": [
+    {"id": "C01", "description": "Engine async configurado", "status": "passed", "detail": "create_async_engine con pool_size=5"},
+    {"id": "C02", "description": "Session factory", "status": "passed", "detail": "async_sessionmaker con get_db()"},
+    {"id": "C03", "description": "Tabla users", "status": "passed", "detail": "10 columnas, role CHECK, username UNIQUE"},
+    {"id": "C04", "description": "Tabla expense_records", "status": "passed", "detail": "21 columnas, 15 estados CHECK, unique parcial group+consecutive"},
+    {"id": "C05", "description": "Tabla image_files", "status": "passed", "detail": "12 columnas, owner_folder CHECK"},
+    {"id": "C06", "description": "Tabla extraction_runs", "status": "passed", "detail": "10 columnas, JSONB para parsed_json"},
+    {"id": "C07", "description": "Tabla processing_queue", "status": "passed", "detail": "10 columnas, indice FIFO (status, enqueued_at, id)"},
+    {"id": "C08", "description": "Tabla catalog_cache", "status": "passed", "detail": "8 columnas, unique (type, code), soft delete"},
+    {"id": "C09", "description": "Tabla sheet_sync", "status": "passed", "detail": "7 columnas, indice (sheet_name, sheet_row)"},
+    {"id": "C10", "description": "Tabla audit_events", "status": "passed", "detail": "8 columnas, indices actor_id, record_id, created_at"},
+    {"id": "C11", "description": "Tabla system_settings", "status": "passed", "detail": "6 columnas, key UNIQUE"},
+    {"id": "C12", "description": "Alembic upgrade", "status": "passed", "detail": "migracion 3cdc35b3c310 aplicada"},
+    {"id": "C13", "description": "Alembic downgrade", "status": "passed", "detail": "rollback exitoso"},
+    {"id": "C14", "description": "Bloqueo consecutivos", "status": "passed", "detail": "pg_advisory_xact_lock por group_code MD5"},
+    {"id": "C15", "description": "Sin credenciales hardcodeadas", "status": "passed", "detail": "todo via os.environ"}
+  ],
+  "artifacts_generated": [
+    {"path": "app/database/engine.py", "type": "source"},
+    {"path": "app/database/session.py", "type": "source"},
+    {"path": "app/database/models.py", "type": "source"},
+    {"path": "app/database/locking.py", "type": "source"},
+    {"path": "migrations/env.py", "type": "config"},
+    {"path": "migrations/versions/3cdc35b3c310_initial_schema.py", "type": "migration"},
+    {"path": "pyproject.toml", "type": "config"}
+  ]
+}

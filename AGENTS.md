@@ -32,7 +32,7 @@ phases:
   fase1:
     name: "Núcleo"
     description: "Base de datos, usuarios, carpetas, monitor SMB, cola FIFO, extracción multimodal, estados y logs"
-    status: in_progress
+    status: completed
     skills:
       - skill-database
       - skill-authentication
@@ -58,7 +58,7 @@ phases:
   fase2:
     name: "Interfaz"
     description: "Login, pendientes, visor, formulario, catálogos, historial, HTMX Polling"
-    status: pending
+    status: completed
     skills:
       - skill-web-ui
       - skill-catalogs

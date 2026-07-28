@@ -1,0 +1,17 @@
+{
+  "skill_name": "skill-fifo-queue",
+  "phase": "fase1",
+  "timestamp": "2026-07-28T14:30:00Z",
+  "status": "passed",
+  "summary": "Cola FIFO persistente con reclamo atomico (SELECT FOR UPDATE SKIP LOCKED). Solo una imagen en ANALIZANDO. Orden por enqueued_at ASC, id ASC. Recuperacion de trabajos ANALIZANDO tras reinicio (timeout 10min).",
+  "metrics": {"checks_passed": 7},
+  "checks": [
+    {"id": "C01", "description": "Reclamo atomico", "status": "passed", "detail": "SELECT FOR UPDATE SKIP LOCKED"},
+    {"id": "C02", "description": "Orden FIFO", "status": "passed", "detail": "enqueued_at ASC, id ASC"},
+    {"id": "C03", "description": "Una sola en ANALIZANDO", "status": "passed"},
+    {"id": "C04", "description": "Worker ID unico", "status": "passed"},
+    {"id": "C05", "description": "Recuperacion ANALIZANDO", "status": "passed", "detail": "stale >10min -> EN_COLA"},
+    {"id": "C06", "description": "Transiciones de estado", "status": "passed", "detail": "EN_COLA->ANALIZANDO->COMPLETADO/ERROR_PERMANENTE"},
+    {"id": "C07", "description": "Persistencia en PostgreSQL", "status": "passed"}
+  ]
+}

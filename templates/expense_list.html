@@ -1,0 +1,45 @@
+<div id="expense-list">
+{% if records %}
+<table>
+    <thead>
+        <tr>
+            <th>Archivo</th>
+            <th>Fecha</th>
+            <th>Monto</th>
+            <th>Banco</th>
+            <th>Estado</th>
+            <th>Confianza</th>
+            {% if user.role == 'admin' %}<th>Propietario</th>{% endif %}
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in records %}
+        <tr>
+            <td>{{ r.source_filename or '-' }}</td>
+            <td>{{ r.transaction_date or '-' }}</td>
+            <td>{% if r.amount %}${{ "%.2f"|format(r.amount) }}{% else %}-{% endif %}</td>
+            <td>{{ r.bank or '-' }}</td>
+            <td><span class="status status-{{ r.status }}">{{ r.status.replace('_', ' ') }}</span></td>
+            <td>
+                {% if r.confidence_json %}
+                    {% set min_conf = (r.confidence_json.values()|min) if r.confidence_json is mapping else 1 %}
+                    {% if min_conf < 0.7 %}
+                        <span class="warn-badge">Baja</span>
+                    {% elif min_conf < 0.9 %}
+                        <span class="warn-badge" style="background:#f59e0b;">Media</span>
+                    {% endif %}
+                {% endif %}
+            </td>
+            {% if user.role == 'admin' %}
+            <td>{{ r.owner_name or '-' }}</td>
+            {% endif %}
+            <td><a href="/expenses/{{ r.id }}">Revisar →</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p style="color:var(--muted);text-align:center;padding:40px;">No hay comprobantes pendientes</p>
+{% endif %}
+</div>

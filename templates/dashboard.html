@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 style="margin-bottom:16px;">
+    {% if user.role == 'admin' %}Todos los comprobantes{% else %}Mis comprobantes{% endif %}
+    <span class="poll-indicator" hx-get="/dashboard/status" hx-trigger="every 3s" hx-swap="outerHTML">actualizando...</span>
+</h2>
+
+<div id="expense-list" hx-get="/dashboard/status" hx-trigger="load, every 3s" hx-swap="innerHTML">
+    <p>Cargando comprobantes...</p>
+</div>
+{% endblock %}
