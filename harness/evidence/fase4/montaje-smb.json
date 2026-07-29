@@ -1,0 +1,23 @@
+{
+  "skill": "skill-infrastructure",
+  "phase": "fase4",
+  "step": "montaje-smb",
+  "timestamp": "2026-07-28T22:51:34.023727",
+  "status": "PASADO",
+  "shares": [
+    {
+      "name": "Ruben",
+      "local": "/mnt/smb/Ruben",
+      "remote": "//192.168.100.45/GastosIA/Ruben",
+      "vers": "3.0"
+    },
+    {
+      "name": "Esme",
+      "local": "/mnt/smb/Esme",
+      "remote": "//192.168.100.45/GastosIA/Esme",
+      "vers": "3.0"
+    }
+  ],
+  "credentials": "/etc/gastos-ia/smb-credentials (0600)",
+  "fstab": "nofail,x-systemd.automount"
+}

@@ -92,7 +92,8 @@ phases:
   fase4:
     name: "Instalador"
     description: "PowerShell, Hyper-V, Ubuntu desatendido, despliegue, variables de entorno, inicio automático, diagnóstico"
-    status: pending
+    status: in_progress
+    started_at: "2026-07-28T18:00:00"
     skills:
       - skill-infrastructure
       - skill-installer

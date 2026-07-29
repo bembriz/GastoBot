@@ -1,0 +1,18 @@
+{
+  "skill": "skill-infrastructure",
+  "phase": "fase4",
+  "step": "configuracion-caddy",
+  "timestamp": "2026-07-28T22:51:34.023727",
+  "status": "PASADO",
+  "caddy": {
+    "version": "2.6.2",
+    "service": "active"
+  },
+  "config": {
+    "domain": "gastos.local",
+    "proxy_to": "localhost:8000",
+    "tls": "self-signed",
+    "cert_auto": true
+  },
+  "access": "https://gastos.local → localhost:8000"
+}

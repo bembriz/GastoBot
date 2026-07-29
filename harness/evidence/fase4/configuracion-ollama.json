@@ -1,0 +1,18 @@
+{
+  "skill": "skill-infrastructure",
+  "phase": "fase4",
+  "step": "configuracion-ollama",
+  "timestamp": "2026-07-28T22:51:34.023727",
+  "status": "PASADO",
+  "ollama": {
+    "version_installed": true,
+    "service": "active",
+    "bound_to": "localhost:11434",
+    "gpu": "CPU-only"
+  },
+  "model": {
+    "name": "qwen3-vl:4b",
+    "size_gb": 3.3,
+    "id": "1343d82ebee3"
+  }
+}

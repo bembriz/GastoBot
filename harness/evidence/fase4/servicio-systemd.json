@@ -1,0 +1,20 @@
+{
+  "skill": "skill-infrastructure",
+  "phase": "fase4",
+  "step": "servicio-systemd",
+  "timestamp": "2026-07-28T22:51:34.023727",
+  "status": "PASADO",
+  "service": {
+    "name": "gastos-ia.service",
+    "path": "/etc/systemd/system/gastos-ia.service",
+    "enabled": true,
+    "state": "inactive (pending app deployment)"
+  },
+  "config": {
+    "user": "gastos-admin",
+    "port": 8000,
+    "host": "127.0.0.1",
+    "environment_file": "/etc/gastos-ia/gastos-ia.env",
+    "working_directory": "/opt/gastos-ia"
+  }
+}

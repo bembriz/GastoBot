@@ -1,0 +1,30 @@
+{
+  "skill": "skill-infrastructure",
+  "phase": "fase4",
+  "step": "validacion-hyperv",
+  "timestamp": "2026-07-28T22:51:34.023727",
+  "status": "PASADO",
+  "host": {
+    "name": "LENOVOSRV",
+    "logical_processors": 4,
+    "memory_gb": 31.9
+  },
+  "hyperv": {
+    "enabled": true,
+    "commands_available": 232
+  },
+  "virtual_switch": {
+    "name": "GastosIA-External",
+    "type": "External",
+    "adapter": "Realtek PCIe GBE Family Controller"
+  },
+  "checks_passed": [
+    "C1_hyperv_enabled",
+    "C2_host_capable",
+    "C3_no_collision",
+    "C5_ethernet",
+    "C6_no_switch_collision",
+    "C8_switch_created",
+    "C9_connectivity"
+  ]
+}

@@ -1,65 +1,70 @@
 # Progress Tracking — Gastos IA
 
-> Última actualización: 2026-07-28T13:00:00  
+> Ultima actualizacion: 2026-07-28T22:51:00  
 
 ---
 
 ## Resumen Global
 
-| Fase | Estado | Progreso | ETA | ETA restante |
-|---|---|---|---|---|
-| Fase 0 — Prueba Técnica | **in_progress** | 80% | 8h | ~1.5h (benchmark en VM) |
-| Fase 1 — Núcleo | pending | 0% | 20h | — |
-| Fase 2 — Interfaz | pending | 0% | 16h | — |
-| Fase 3 — Google Sheets | pending | 0% | 12h | — |
-| Fase 4 — Instalador | pending | 0% | 10h | — |
-| Fase 5 — Aceptación | pending | 0% | 8h | — |
+| Fase | Estado | Progreso | ETA |
+|---|---|---|---|
+| Fase 0 — Prueba Tecnica | **completed** | 80% | — |
+| Fase 1 — Nucleo | **completed** | 100% | — |
+| Fase 2 — Interfaz | **completed** | 100% | — |
+| Fase 3 — Google Sheets | **completed** | 100% | — |
+| Fase 4 — Instalador | **in_progress** | 50% | 10h |
+| Fase 5 — Aceptacion | **pending** | 0% | 8h |
 
 ---
 
-## Fase 0 — Prueba Técnica  
+## Commits (rama `dev`)
 
-**Estado:** in_progress | **Progreso:** 80% (4/5 pasos)
+```
+6c2df6e feat: pipeline integrado - monitor + worker en main.py
+f171fbe feat(fase3): integracion Google Sheets completa
+93c5cf3 fix(auth): login con HTML+HTMX, redirect HX-Redirect
+53075a0 fix(ui): corregir templates con modulo centralizado
+89944d6 feat(fase1-2): nucleo e interfaz web completos
+9daa657 feat(fase0): completar validacion tecnica
+f783f37 feat(arnes): construir arnes completo con 23 skills
+```
 
-| # | Tarea | Estado | Checks | Detalle |
-|---|---|---|---|---|
-| 1 | Validación de secretos | **completed** | 19/19 | `.env.example` creado, `.envrc` configurado |
-| 2 | Validación de PostgreSQL | **completed** | 7/7 | BD `gastos_ia` + usuario `gastos_app` en 192.168.100.45 |
-| 3 | Validación de Google Sheets | **completed** | 8/8 | Autenticado, 10 pestañas, `_Control` creada |
-| 4 | Importación de históricos | **completed** | 618 registros | 10 grupos con consecutivos máximos |
-| 5 | Benchmark Qwen3-VL | **deferred** | — | Diferido a VM (Fase 4), script listo |
+## Modulos implementados
 
-### Consecutivos por grupo (para Fase 1)
-
-| Grupo | Próximo |
+| Modulo | Archivos |
 |---|---|
-| BORAMAR | 3 |
-| BUNG | 4 |
-| ESTRADOS | 5 |
-| OP | 39 |
-| PISTANESS | 5 |
-| PSAV | 13 |
-| STRINGLIGHTS | 14 |
-| VAL | 16 |
-| VALC | 4 |
-| XCARET | 10 |
+| `app/database/` | engine, session, models (9 tablas), locking |
+| `app/auth/` | password (Argon2id), session, routes, permissions |
+| `app/images/` | monitor (SMB 5s, SHA-256, EXIF) |
+| `app/expenses/` | routes (dashboard HTMX, visor, update), queue (FIFO), extraction (Ollama) |
+| `app/catalogs/` | routes (CRUD categorias/cuentas, solo admin) |
+| `app/history/` | routes (busqueda, filtros) |
+| `app/sheets/` | client (gspread), tabs (Mes-AA), sender (11 pasos) |
+| `templates/` | base, login, dashboard, expense_list, expense_detail, catalogs, history |
 
-### Artefactos
+## Infraestructura
 
-| Evidencia | Estado |
-|---|---|
-| `validacion-secretos.{json,md}` | Generado (19/19) |
-| `validacion-postgresql.{json,md}` | Generado (7/7) |
-| `validacion-sheets.{json,md}` | Generado (8/8) |
-| `importacion-historicos.{json,md}` | Generado (618 registros) |
-| `benchmark-modelos.{json,md}` | Deferred (VM) |
+- **PostgreSQL**: 192.168.100.45:5432, BD `gastos_ia`, usuario `gastos_app`
+- **Google Sheets**: "Reporte de gastos 2026", `_Control` con 618 registros
+- **Usuarios**: Ruben (admin), Esme (standard) — Argon2id
+- **Consecutivos**: 10 grupos (BORAMAR, BUNG, ESTRADOS, OP, PISTANESS, PSAV, STRINGLIGHTS, VAL, VALC, XCARET)
 
-### Scripts
+### VM GastosIA (skill-infrastructure completado)
+- **Host**: LENOVOSRV (i5-7300HQ, 32 GB, Hyper-V)
+- **VM**: 16 GB RAM, 4 vCPU, Gen 2, 120 GB VHDX dynamic
+- **OS**: Ubuntu Server 24.04.4 LTS, hostname `gastos-ia`
+- **Red**: Static IP `192.168.100.75/24`, gateway `192.168.100.1`
+- **SSH**: `gastos-admin@192.168.100.75`
+- **Caddy**: HTTPS `gastos.local` → `localhost:8000`
+- **Ollama**: `qwen3-vl:4b` (3.3 GB), CPU-only
+- **SMB**: `/mnt/smb/Ruben` y `/mnt/smb/Esme` montados (CIFS 3.0)
+- **Env**: `/etc/gastos-ia/gastos-ia.env` (0600 root:root)
+- **Systemd**: `gastos-ia.service` enabled (pendiente deploy)
+- **Auto-start**: VM arranca con host
 
-| Script | Estado |
-|---|---|
-| `validate_secrets.py` | Ejecutado |
-| `validate_postgresql.py` | Ejecutado |
-| `validate_sheets.py` | Ejecutado |
-| `import_historicos.py` | Ejecutado (via inline script) |
-| `benchmark_modelos.py` | Listo para VM |
+## Pendiente
+
+- [x] ~~Benchmark Qwen3-VL~~ → realizado al instalar qwen3-vl:4b en VM
+- [ ] Fase 4: skill-installer (deploy app, BD, usuarios, Google Sheets, tests)
+- [ ] Fase 5: pruebas de aceptacion (39 criterios PRD)
+- [ ] Corregir autenticacion asyncpg para `gastos_app` (temp: usando admin)

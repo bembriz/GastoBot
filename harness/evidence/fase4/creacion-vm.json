@@ -1,0 +1,32 @@
+{
+  "skill": "skill-infrastructure",
+  "phase": "fase4",
+  "step": "creacion-vm",
+  "timestamp": "2026-07-28T22:51:34.023727",
+  "status": "PASADO",
+  "vm": {
+    "name": "GastosIA",
+    "state": "Running",
+    "memory_gb": 16,
+    "processor_count": 4,
+    "generation": 2,
+    "memory_type": "Static"
+  },
+  "vhdx": {
+    "path": "D:\\Hyper-V\\VirtualMachines\\GastosIA\\GastosIA.vhdx",
+    "size_gb": 120,
+    "type": "Dynamic"
+  },
+  "iso": {
+    "version": "Ubuntu Server 24.04.4 LTS",
+    "size_gb": 3.2,
+    "path": "D:\\Hyper-V\\ISOs\\ubuntu-24.04-server-amd64.iso",
+    "attached": true
+  },
+  "os": {
+    "ubuntu_version": "24.04 LTS",
+    "hostname": "gastos-ia",
+    "kernel": "6.8.0-136-generic",
+    "disk_gb": 58
+  }
+}
