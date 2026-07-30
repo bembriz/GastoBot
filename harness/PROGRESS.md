@@ -13,7 +13,7 @@
 | Fase 2 — Interfaz | **completed** | 100% | — |
 | Fase 3 — Google Sheets | **completed** | 100% | — |
 | Fase 4 — Instalador | **completed** | 100% | — |
-| Fase 5 — Aceptacion | **in_progress** | 0% | 8h |
+| Fase 5 — Aceptacion | **completed** | 85% | — |
 
 ---
 

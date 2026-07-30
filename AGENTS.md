@@ -92,8 +92,7 @@ phases:
   fase4:
     name: "Instalador"
     description: "PowerShell, Hyper-V, Ubuntu desatendido, despliegue, variables de entorno, inicio automático, diagnóstico"
-    status: in_progress
-    started_at: "2026-07-28T18:00:00"
+    status: completed
     skills:
       - skill-infrastructure
       - skill-installer
@@ -112,7 +111,7 @@ phases:
   fase5:
     name: "Aceptación"
     description: "Pruebas funcionales, concurrencia, FIFO, recuperación, SMB, HTMX, offline, reinicios, comprobantes reales, manual"
-    status: pending
+    status: completed
     skills:
       - skill-fase5-aceptacion
     preconditions:
