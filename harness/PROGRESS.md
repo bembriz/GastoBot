@@ -1,6 +1,8 @@
 # Progress Tracking — Gastos IA
 
-> Ultima actualizacion: 2026-07-29T09:48:34  
+> Ultima actualizacion: 2026-07-29T20:08:00
+> Estado: MVPS completado (Fases 0-5). Sistema operativo en https://gastos.local.
+> Pendiente: pruebas manuales de concurrencia/reinicio con imagenes reales.  
 
 ---
 
