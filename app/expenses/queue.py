@@ -9,17 +9,33 @@ Garantiza procesamiento secuencial estricto:
 
 import asyncio
 import os
+import shutil
 import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import ExpenseRecord, ExtractionRun, ProcessingQueue
+from app.database.models import ExpenseRecord, ExtractionRun, ImageFile, ProcessingQueue
 from app.database.session import async_session
+from app.expenses.extraction import extract_from_image
 
 WORKER_ID = str(uuid.uuid4())[:8]
 STALE_TIMEOUT_SECONDS = 600
+
+
+def _move_to_procesados(original_path: str, owner_folder: str) -> None:
+    try:
+        src_dir = os.path.dirname(original_path)
+        procesados_dir = os.path.join(os.path.dirname(src_dir), "procesados")
+        os.makedirs(procesados_dir, exist_ok=True)
+        filename = os.path.basename(original_path)
+        dst = os.path.join(procesados_dir, filename)
+        shutil.copy2(original_path, dst)
+        os.remove(original_path)
+        print(f"[Worker] Movido a procesados: {filename}")
+    except Exception as e:
+        print(f"[Worker] Error moviendo archivo: {e}")
 
 
 async def claim_next_job(db: AsyncSession) -> ProcessingQueue | None:
@@ -91,7 +107,7 @@ async def complete_job(db: AsyncSession, job: ProcessingQueue, success: bool, er
         )
         record = record_result.scalar_one_or_none()
         if record:
-            record.status = "LISTO_PARA_REVISION"
+            record.status = "REQUIERE_REVISION"
     else:
         job.status = "ERROR_PERMANENTE"
         job.last_error = error_msg
@@ -129,8 +145,60 @@ async def worker_loop() -> None:
 
 
 async def process_job(db: AsyncSession, job: ProcessingQueue) -> bool:
-    """Procesar imagen con Ollama — placeholder, implementado en skill-image-extraction."""
-    return True
+    record_result = await db.execute(
+        select(ExpenseRecord).where(ExpenseRecord.id == job.record_id)
+    )
+    record = record_result.scalar_one_or_none()
+    if not record:
+        return False
+
+    image_result = await db.execute(
+        select(ImageFile).where(ImageFile.record_id == record.id)
+    )
+    image = image_result.scalar_one_or_none()
+    if not image:
+        return False
+
+    image_path = image.optimized_path or image.original_path
+    if not image_path or not os.path.exists(image_path):
+        return False
+
+    print(f"[Worker] Analizando imagen: {image_path}")
+    extraction = await extract_from_image(image_path)
+
+    extraction_run = ExtractionRun(
+        record_id=record.id,
+        model_name="qwen3-vl:4b",
+        prompt_version="1.0",
+        raw_response=extraction.get("raw_response", ""),
+        parsed_json=extraction.get("parsed_json"),
+        is_valid_json=extraction.get("is_valid_json", False),
+        elapsed_ms=extraction.get("elapsed_ms", 0),
+        error_message=extraction.get("error_message"),
+    )
+    db.add(extraction_run)
+
+    if extraction.get("is_valid_json") and extraction.get("parsed_json"):
+        parsed = extraction["parsed_json"]
+        if parsed.get("transaction_date"):
+            try:
+                record.transaction_date = datetime.strptime(parsed["transaction_date"], "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                pass
+        if parsed.get("amount"):
+            record.amount = parsed["amount"]
+        record.ticket_description = parsed.get("ticket_description")
+        record.bank = parsed.get("bank")
+        record.transaction_type = parsed.get("transaction_type")
+        record.confidence_json = parsed.get("confidence")
+
+    success = extraction.get("parsed_json") is not None
+
+    if success and image.original_path:
+        _move_to_procesados(image.original_path, image.owner_folder)
+
+    await db.commit()
+    return success
 
 
 if __name__ == "__main__":

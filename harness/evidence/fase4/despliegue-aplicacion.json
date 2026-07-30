@@ -1,0 +1,30 @@
+{
+  "skill_name": "skill-installer",
+  "phase": "fase4",
+  "timestamp": "2026-07-29T15:15:00Z",
+  "status": "passed",
+  "duration_seconds": 1200,
+  "summary": "Aplicacion FastAPI desplegada exitosamente en /opt/gastos-ia via rsync desde repositorio local. Dependencias instaladas con uv sync --frozen. uv 0.12.0, Python 3.12.3. FastAPI 0.140.13 verificado.",
+  "metrics": {
+    "tests_total": 0,
+    "tests_passed": 0,
+    "tests_failed": 0,
+    "coverage_percent": 0,
+    "errors_count": 0,
+    "warnings_count": 0
+  },
+  "checks": [
+    {"id": "DEPLOY-01", "description": "Directorio /opt/gastos-ia creado", "status": "passed", "detail": "Creado con owner gastos-admin:gastos-admin"},
+    {"id": "DEPLOY-02", "description": "Codigo copiado via rsync", "status": "passed", "detail": "1.7 MB transferidos, excluyendo .git, __pycache__, .venv"},
+    {"id": "DEPLOY-03", "description": "Dependencias instaladas con uv sync --frozen", "status": "passed", "detail": "Todas las dependencias prod resueltas"},
+    {"id": "DEPLOY-04", "description": "Dependencias dev instaladas con uv sync --extra dev", "status": "passed", "detail": "pytest, ruff, mypy, pip-audit instalados"},
+    {"id": "DEPLOY-05", "description": "FastAPI importable en VM", "status": "passed", "detail": "FastAPI 0.140.13 verificado"}
+  ],
+  "artifacts_generated": [
+    {"path": "/opt/gastos-ia/", "type": "directory", "description": "Directorio de aplicacion"},
+    {"path": "/opt/gastos-ia/.venv/", "type": "directory", "description": "Virtual environment con dependencias"}
+  ],
+  "errors": [],
+  "warnings": [],
+  "next_steps": ["Crear base de datos", "Configurar Google Sheets", "Crear usuarios"]
+}

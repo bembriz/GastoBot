@@ -1,116 +1,127 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="flex" style="gap:24px;">
-    <div style="flex:1;min-width:300px;">
-        <div class="img-controls">
-            <button onclick="zoomIn()" class="btn">+</button>
-            <button onclick="zoomOut()" class="btn">−</button>
-            <button onclick="rotateImg()" class="btn">↻</button>
-            <button onclick="fitWidth()" class="btn">↔</button>
+    <div style="flex:1;min-width:300px;position:relative;">
+        <div class="img-controls" style="position:absolute;top:8px;left:8px;z-index:10;display:flex;gap:4px;background:rgba(255,255,255,0.85);border-radius:6px;padding:4px;">
+            <button onclick="zoomImg(0.5)" class="btn" title="Acercar">+</button>
+            <button onclick="zoomImg(-0.5)" class="btn" title="Alejar">&minus;</button>
+            <button onclick="rotateImg()" class="btn" title="Rotar">&#x21bb;</button>
+            <button onclick="resetImg()" class="btn" title="Ajustar">&#x2194;</button>
         </div>
-        {% if record.image_file %}
-        <img id="ticket-img" src="/images/{{ record.id }}/view" class="img-viewer" style="transform: scale(1) rotate(0deg);">
-        {% else %}
-        <p style="color:var(--muted);">Imagen no disponible</p>
-        {% endif %}
+        <div style="margin-top:44px;overflow:auto;border:1px solid var(--border);border-radius:8px;min-height:300px;display:flex;align-items:center;justify-content:center;background:#f0f0f0;">
+            {% if record.image_file %}
+            <img id="ticket-img" src="/images/{{ record.id }}/view"
+                 style="max-width:100%;display:block;transform:scale(1) rotate(0deg);transform-origin:center center;transition:transform 0.2s;">
+            {% else %}
+            <p style="color:var(--muted);">Imagen no disponible</p>
+            {% endif %}
+        </div>
     </div>
 
     <div class="card" style="flex:1;min-width:350px;">
-        <h3 style="margin-bottom:16px;">
-            Revisión
-            <span class="status status-{{ record.status }}">{{ record.status.replace('_', ' ') }}</span>
-        </h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 style="margin:0;">
+                Revisi&oacute;n
+                <span class="status status-{{ record.status }}">{{ record.status.replace('_', ' ') }}</span>
+            </h3>
+            <a href="/dashboard" class="btn" style="background:var(--muted);color:#fff;">&larr; Regresar</a>
+        </div>
 
         <form hx-put="/expenses/{{ record.id }}" hx-target="#save-result" hx-swap="innerHTML">
             <div class="form-group">
                 <label>Fecha del gasto</label>
-                <input type="date" name="transaction_date" value="{{ record.transaction_date }}" required>
+                <input type="date" name="transaction_date"
+                       value="{{ record.transaction_date.strftime('%Y-%m-%d') if record.transaction_date else '' }}" required>
             </div>
             <div class="form-group">
                 <label>Grupo</label>
-                <input type="text" name="group_code" value="{{ record.group_code or '' }}" placeholder="ej: VAL, OP, PSAV...">
+                <input type="text" name="group_code" id="group-code"
+                       value="{{ record.group_code or '' }}" placeholder="ej: VAL, OP, PSAV...">
             </div>
             <div class="form-group">
-                <label>Descripción del ticket</label>
-                <input type="text" name="ticket_description" value="{{ record.ticket_description or '' }}">
+                <label>Descripci&oacute;n del ticket</label>
+                <input type="text" name="ticket_description" id="ticket-desc"
+                       value="{{ record.ticket_description or '' }}">
             </div>
             <div class="form-group">
-                <label>Descripción final</label>
-                <input type="text" value="{{ record.final_description or '' }}" readonly style="background:#f9fafb;">
+                <label>Descripci&oacute;n final (vista previa)</label>
+                <input type="text" name="final_description" id="final-desc"
+                       value="{{ record.final_description or '' }}" readonly style="background:#f9fafb;">
             </div>
             <div class="flex">
-                <div class="form-group w-half">
-                    <label>Categoría</label>
-                    <select name="category_id">
-                        <option value="">--</option>
-                        {% for cat in categories %}
-                        <option value="{{ cat.id }}" {% if record.category_id == cat.id %}selected{% endif %}>{{ cat.description }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
                 <div class="form-group w-half">
                     <label>Cuenta</label>
-                    <select name="account_id">
+                    <select name="account_id" id="account-select"
+                            hx-get="/categories/by-account"
+                            hx-target="#category-select"
+                            hx-swap="innerHTML"
+                            hx-trigger="change"
+                            hx-include="#category-select">
                         <option value="">--</option>
                         {% for acc in accounts %}
-                        <option value="{{ acc.id }}" {% if record.account_id == acc.id %}selected{% endif %}>{{ acc.description }}</option>
+                        <option value="{{ acc.id }}" {% if record.account_id == acc.id %}selected{% endif %}>
+                            {{ acc.code }} - {{ acc.description }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group w-half">
+                    <label>Categor&iacute;a</label>
+                    <select name="category_id" id="category-select">
+                        <option value="">--</option>
+                        {% for cat in categories %}
+                        {% if not record.account_id or cat.parent_id == record.account_id %}
+                        <option value="{{ cat.id }}" {% if record.category_id == cat.id %}selected{% endif %}>
+                            {{ cat.description }}
+                        </option>
+                        {% endif %}
                         {% endfor %}
                     </select>
                 </div>
             </div>
             <div class="flex">
                 <div class="form-group w-half">
-                    <label>Precio unitario</label>
-                    <input type="number" step="0.01" name="amount" id="unit-price"
-                           value="{{ "%.2f"|format(record.amount) if record.amount else '' }}"
-                           hx-trigger="change" hx-get="/expenses/sync-total" hx-include="this"
-                           required>
+                    <label>Importe</label>
+                    <input type="number" step="0.01" name="amount"
+                           value="{{ "%.2f"|format(record.amount) if record.amount else '' }}" required>
                 </div>
-                <div class="form-group w-half">
-                    <label>Total</label>
-                    <input type="number" step="0.01" name="total" id="total-amount"
-                           value="{{ "%.2f"|format(record.amount) if record.amount else '' }}" required readonly>
-                </div>
-            </div>
-            <div class="flex">
                 <div class="form-group w-half">
                     <label>Banco</label>
                     <input type="text" name="bank" value="{{ record.bank or '' }}" required>
                 </div>
-                <div class="form-group w-half">
-                    <label>Tipo de transacción</label>
-                    <select name="transaction_type" required>
-                        <option value="Transferencia" {% if record.transaction_type == 'Transferencia' %}selected{% endif %}>Transferencia</option>
-                        <option value="Credito" {% if record.transaction_type == 'Credito' %}selected{% endif %}>Crédito</option>
-                    </select>
-                </div>
+            </div>
+            <div class="form-group">
+                <label>Tipo de transacci&oacute;n</label>
+                <select name="transaction_type" required>
+                    <option value="Transferencia" {% if record.transaction_type == 'Transferencia' %}selected{% endif %}>Transferencia</option>
+                    <option value="Credito" {% if record.transaction_type == 'Credito' %}selected{% endif %}>Cr&eacute;dito</option>
+                </select>
             </div>
             <div id="save-result" style="margin:8px 0;"></div>
-            <div class="flex" style="margin-top:16px;">
-                <button type="submit" class="btn btn-primary" id="save-btn">Guardar</button>
-                <button type="button" class="btn btn-primary"
-                        hx-post="/expenses/{{ record.id }}/send"
-                        hx-target="#save-result" hx-swap="innerHTML"
-                        id="send-btn"
-                        {% if not record.transaction_date or not record.group_code or not record.amount or not record.bank %}disabled{% endif %}>
-                    Enviar a Google Sheets
-                </button>
+            <div class="flex" style="margin-top:16px;gap:8px;">
+                <button type="submit" class="btn btn-primary">Guardar</button>
             </div>
         </form>
     </div>
 </div>
 
 <script>
-    let scale = 1, rotation = 0;
-    const img = document.getElementById('ticket-img');
-    function zoomIn() { scale += 0.2; applyTransform(); }
-    function zoomOut() { scale = Math.max(0.2, scale - 0.2); applyTransform(); }
-    function rotateImg() { rotation = (rotation + 90) % 360; applyTransform(); }
-    function fitWidth() { scale = 1; rotation = 0; applyTransform(); }
-    function applyTransform() { if(img) img.style.transform = `scale(${scale}) rotate(${rotation}deg)`; }
+    var scale = 1, rotation = 0;
+    var img = document.getElementById('ticket-img');
+    function zoomImg(delta) { scale = Math.max(0.3, Math.min(5, scale + delta)); apply(); }
+    function rotateImg() { rotation = (rotation + 90) % 360; apply(); }
+    function resetImg() { scale = 1; rotation = 0; apply(); }
+    function apply() { if(img) img.style.transform = 'scale(' + scale + ') rotate(' + rotation + 'deg)'; }
 
-    document.getElementById('unit-price').addEventListener('input', function() {
-        document.getElementById('total-amount').value = this.value;
-    });
+    var groupInput = document.getElementById('group-code');
+    var descInput = document.getElementById('ticket-desc');
+    var finalInput = document.getElementById('final-desc');
+    function updateFinal() {
+        var g = (groupInput?.value || '').trim();
+        var d = (descInput?.value || '').trim();
+        finalInput.value = g && d ? g + '--' + d : '';
+    }
+    groupInput?.addEventListener('input', updateFinal);
+    descInput?.addEventListener('input', updateFinal);
 </script>
 {% endblock %}

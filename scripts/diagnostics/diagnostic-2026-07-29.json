@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-07-29T15:19:05.480145+00:00",
+  "hostname": "gastos-ia",
+  "uname": "Linux gastos-ia 6.8.0-136-generic #136-Ubuntu SMP PREEMPT_DYNAMIC Wed Jul  1 21:53:05 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux",
+  "cpu_count": "4",
+  "memory": "15Gi total, 14Gi available",
+  "disk": "58G size, 43G available, 23% used",
+  "python_version": "Python 3.12.3",
+  "uv_version": "uv 0.12.0",
+  "services": {
+    "gastos_ia": "active",
+    "caddy": "active",
+    "ollama": "active"
+  },
+  "database": {
+    "type": "PostgreSQL",
+    "host": "192.168.100.45",
+    "name": "gastos_ia",
+    "user": "gastos_app",
+    "connection": "accepting"
+  },
+  "ollama_model": "qwen3-vl:4b",
+  "smb_mounts": {
+    "Ruben": true,
+    "Esme": true
+  },
+  "env_file_permissions": "600 root:root",
+  "https_endpoint": "https://gastos.local",
+  "users_configured": [
+    "Ruben (admin)",
+    "Esme (standard)"
+  ],
+  "no_secrets_included": true,
+  "uv_lock_present": true,
+  "app_directory": "/opt/gastos-ia"
+}

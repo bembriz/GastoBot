@@ -1,6 +1,6 @@
 # Progress Tracking — Gastos IA
 
-> Ultima actualizacion: 2026-07-28T22:51:00  
+> Ultima actualizacion: 2026-07-29T09:48:34  
 
 ---
 
@@ -12,8 +12,8 @@
 | Fase 1 — Nucleo | **completed** | 100% | — |
 | Fase 2 — Interfaz | **completed** | 100% | — |
 | Fase 3 — Google Sheets | **completed** | 100% | — |
-| Fase 4 — Instalador | **in_progress** | 50% | 10h |
-| Fase 5 — Aceptacion | **pending** | 0% | 8h |
+| Fase 4 — Instalador | **completed** | 100% | — |
+| Fase 5 — Aceptacion | **in_progress** | 0% | 8h |
 
 ---
 
@@ -64,7 +64,20 @@ f783f37 feat(arnes): construir arnes completo con 23 skills
 
 ## Pendiente
 
-- [x] ~~Benchmark Qwen3-VL~~ → realizado al instalar qwen3-vl:4b en VM
-- [ ] Fase 4: skill-installer (deploy app, BD, usuarios, Google Sheets, tests)
+- [x] ~~Fase 4: skill-installer~~ → app desplegada, BD configurada, Google Sheets operativo, servicios activos
+- [x] ~~Bug: @ en password BD rompia URL asyncpg~~ → fix con quote_plus en engine.py
+- [x] ~~Bug: session cookie y HX-Redirect no se enviaban~~ → fix: setear headers en HTMLResponse retornado
+- [x] ~~Bug: monitor pisaba status LISTO_PARA_REVISION con DUPLICADO_EXACTO~~ → fix: solo marcar si status=DETECTADO
+- [x] ~~Bug: OCR lento (Ollama CPU 5+ min)~~ → reemplazado por Gemini Flash (~2s)
+- [x] ~~Catálogos: cuentas + categorías dependientes~~ → parent_id + HTMX filter
+- [x] ~~Dashboard: tabla con checkboxes + bulk send a Sheets~~ → implementado con persistencia JS
 - [ ] Fase 5: pruebas de aceptacion (39 criterios PRD)
-- [ ] Corregir autenticacion asyncpg para `gastos_app` (temp: usando admin)
+- [ ] Crear tests unitarios y E2E
+- [ ] Manual operativo para usuarios
+
+## Bugs Corregidos (Fase 4)
+
+| Bug | Archivo | Fix |
+|-----|---------|-----|
+| `@` en DB password rompe asyncpg | `app/database/engine.py:1` | `urllib.parse.quote_plus()` en DB_USER y DB_PASS |
+| Session cookie y HX-Redirect no se envian | `app/auth/routes.py:83-93` | setear headers/cookies en el HTMLResponse retornado |

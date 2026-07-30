@@ -1,0 +1,26 @@
+{
+  "skill_name": "skill-installer",
+  "phase": "fase4",
+  "timestamp": "2026-07-29T15:14:00Z",
+  "status": "passed",
+  "duration_seconds": 300,
+  "summary": "Credenciales de Google Sheets configuradas. Archivo JSON de service account copiado a /etc/gastos-ia/google-service-account.json con permisos 600 gastos-admin:gastos-admin. Spreadsheet 'Reporte de gastos 2026' (ID: 15lceeYOpnAok8GARfJYwENjqUvNakxwrvtqF96QuyTs) accesible. 11 pestañas detectadas.",
+  "metrics": {
+    "sheets_count": 11,
+    "connectivity_ok": true,
+    "errors_count": 0
+  },
+  "checks": [
+    {"id": "GS-01", "description": "Archivo JSON service account copiado", "status": "passed", "detail": "/etc/gastos-ia/google-service-account.json, 2368 bytes, 600"},
+    {"id": "GS-02", "description": "Spreadsheet ID configurado", "status": "passed", "detail": "15lceeYOpnAok8GARfJYwENjqUvNakxwrvtqF96QuyTs"},
+    {"id": "GS-03", "description": "Conexion API Google Sheets verificada", "status": "passed", "detail": "Sheet title: Reporte de gastos 2026"},
+    {"id": "GS-04", "description": "Pestañas accesibles", "status": "passed", "detail": "Enero, Febrero, Febrero2, Marzo, Marzo 2, Abril, Mayo, Junio, Julio, correcciones, _Control"},
+    {"id": "GS-05", "description": "Permisos de archivo corregidos para gastos-admin", "status": "passed", "detail": "Cambiado de root:root a gastos-admin:gastos-admin para que el service pueda leerlo"}
+  ],
+  "artifacts_generated": [
+    {"path": "/etc/gastos-ia/google-service-account.json", "type": "file", "description": "Service account JSON con permisos 600"}
+  ],
+  "errors": [],
+  "warnings": ["Permiso inicial root:root impedia lectura desde app como gastos-admin. Corregido."],
+  "next_steps": ["Llenar variables de entorno"]
+}

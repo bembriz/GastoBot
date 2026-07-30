@@ -1,0 +1,28 @@
+{
+  "skill_name": "skill-installer",
+  "phase": "fase4",
+  "timestamp": "2026-07-29T15:16:00Z",
+  "status": "passed",
+  "duration_seconds": 180,
+  "summary": "Servicio gastos-ia.service creado, enabled y activo. Caddy configurado con reverse_proxy a localhost:8000, sirviendo HTTPS en gastos.local con certificado TLS interno. Ollama activo con qwen3-vl:4b.",
+  "metrics": {
+    "services_active": 3,
+    "gastos_ia_pid": "7736",
+    "https_accessible": true,
+    "errors_count": 0
+  },
+  "checks": [
+    {"id": "SRV-01", "description": "Systemd service creado", "status": "passed", "detail": "/etc/systemd/system/gastos-ia.service"},
+    {"id": "SRV-02", "description": "gastos-ia.service activo (active, enabled)", "status": "passed", "detail": "PID 7736, uvicorn en 127.0.0.1:8000"},
+    {"id": "SRV-03", "description": "Caddy proxy HTTPS funcionando", "status": "passed", "detail": "gastos.local -> localhost:8000, TLS interno"},
+    {"id": "SRV-04", "description": "Pagina login renderiza (HTTP 200)", "status": "passed", "detail": "HTML con HTMX cargado correctamente"},
+    {"id": "SRV-05", "description": "Ollama activo con qwen3-vl:4b", "status": "passed", "detail": "Modelo de 3.3 GB disponible en localhost:11434"},
+    {"id": "SRV-06", "description": "Caddy reload para TLS", "status": "passed", "detail": "Certificado TLS para gastos.local obtenido tras reload"}
+  ],
+  "artifacts_generated": [
+    {"path": "/etc/systemd/system/gastos-ia.service", "type": "file", "description": "Systemd service file"}
+  ],
+  "errors": [],
+  "warnings": ["Caddy configurado solo para HTTP inicialmente. Tuvo que hacerse reload para obtener certificado TLS y habilitar HTTPS."],
+  "next_steps": ["Ejecutar validaciones", "Generar diagnostico"]
+}

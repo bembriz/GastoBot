@@ -1,0 +1,23 @@
+{
+  "skill_name": "skill-installer",
+  "phase": "fase4",
+  "timestamp": "2026-07-29T15:12:00Z",
+  "status": "passed",
+  "duration_seconds": 30,
+  "summary": "Usuarios Ruben (admin) y Esme (standard) ya existian en la base de datos desde Fase 1. Ambos con password_change_required=true y hash Argon2id verificado.",
+  "metrics": {
+    "users_total": 2,
+    "admins": 1,
+    "standard_users": 1,
+    "argon2id_verified": true
+  },
+  "checks": [
+    {"id": "USR-01", "description": "Usuario Ruben (admin) existe", "status": "passed", "detail": "username=Ruben, role=admin, is_active=true, password_change_required=true"},
+    {"id": "USR-02", "description": "Usuario Esme (standard) existe", "status": "passed", "detail": "username=Esme, role=standard, is_active=true, password_change_required=true"},
+    {"id": "USR-03", "description": "Hash Argon2id verificado", "status": "passed", "detail": "Ambos usuarios tienen hash que comienza con $argon2id$"}
+  ],
+  "artifacts_generated": [],
+  "errors": [],
+  "warnings": ["No se re-establecieron passwords en este despliegue. Los usuarios mantienen sus passwords existentes."],
+  "next_steps": ["Llenar variables de entorno", "Activar servicios"]
+}

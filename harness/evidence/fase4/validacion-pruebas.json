@@ -1,0 +1,35 @@
+{
+  "skill_name": "skill-installer",
+  "phase": "fase4",
+  "timestamp": "2026-07-29T15:18:00Z",
+  "status": "partial",
+  "duration_seconds": 300,
+  "summary": "Validaciones ejecutadas: App responde HTTPS 200 en login, Google Sheets conectado (11 pestañas), Ollama qwen3-vl:4b disponible, PostgreSQL aceptando conexiones. ruff reporta 283 errores preexistentes. No hay tests unitarios en el repositorio.",
+  "metrics": {
+    "https_status": 200,
+    "sheets_connectivity": "ok",
+    "ollama_models": 1,
+    "db_connection": "accepting",
+    "ruff_errors": 283,
+    "tests_available": 0,
+    "errors_count": 0,
+    "warnings_count": 2
+  },
+  "checks": [
+    {"id": "VAL-01", "description": "App responde en HTTPS", "status": "passed", "detail": "HTTP 200 en https://gastos.local/ y /login"},
+    {"id": "VAL-02", "description": "Google Sheets conectado", "status": "passed", "detail": "11 pestañas en Reporte de gastos 2026"},
+    {"id": "VAL-03", "description": "Ollama funcionando", "status": "passed", "detail": "qwen3-vl:4b disponible"},
+    {"id": "VAL-04", "description": "PostgreSQL aceptando conexiones", "status": "passed", "detail": "pg_isready: accepting connections"},
+    {"id": "VAL-05", "description": "SMB mounts activos", "status": "passed", "detail": "Ruben y Esme montados en /mnt/smb/"},
+    {"id": "VAL-06", "description": "ruff lint", "status": "warning", "detail": "283 errores preexistentes en el codigo"},
+    {"id": "VAL-07", "description": "Tests unitarios", "status": "skipped", "detail": "Directorio tests/ no existe. Pendiente Fase 5."},
+    {"id": "VAL-08", "description": "mypy type check", "status": "skipped", "detail": "No ejecutado (283 errores ruff por resolver primero)"}
+  ],
+  "artifacts_generated": [],
+  "errors": [],
+  "warnings": [
+    "283 errores de ruff preexistentes (no bloquean funcionalidad)",
+    "No hay tests unitarios en el repositorio"
+  ],
+  "next_steps": ["Generar diagnostico JSON", "Fase 5: crear tests y corregir lint"]
+}

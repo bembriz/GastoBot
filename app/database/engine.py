@@ -1,6 +1,7 @@
 """Motor async de PostgreSQL para Gastos IA."""
 
 import os
+from urllib.parse import quote_plus
 from sqlalchemy.ext.asyncio import create_async_engine
 
 DATABASE_HOST = os.environ["GASTOSIA_DATABASE_HOST"]
@@ -17,7 +18,7 @@ if os.environ.get("GASTOSIA_USE_ADMIN_DB"):
     DB_PASS = os.environ["GASTOSIA_POSTGRES_ADMIN_PASSWORD"]
 
 DATABASE_URL = (
-    f"postgresql+asyncpg://{DB_USER}:{DB_PASS}"
+    f"postgresql+asyncpg://{quote_plus(DB_USER)}:{quote_plus(DB_PASS)}"
     f"@{DATABASE_HOST}:{DATABASE_PORT}/{DATABASE_NAME}"
 )
 

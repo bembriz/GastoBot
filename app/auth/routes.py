@@ -81,16 +81,19 @@ async def login(
     await db.commit()
 
     token = create_session(user.id, user.username, user.role)
-    set_session_cookie(response, token)
 
     if user.password_change_required:
-        return HTMLResponse(
+        resp = HTMLResponse(
             render("login.html", request=request, user=None,
                    change_password=True),
         )
+        set_session_cookie(resp, token)
+        return resp
 
-    response.headers["HX-Redirect"] = "/dashboard"
-    return HTMLResponse("")
+    resp = HTMLResponse("")
+    set_session_cookie(resp, token)
+    resp.headers["HX-Redirect"] = "/dashboard"
+    return resp
 
 
 @router.post("/logout")

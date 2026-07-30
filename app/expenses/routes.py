@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -59,7 +59,7 @@ async def dashboard_status(request: Request, db: AsyncSession = Depends(get_db))
 
     active_statuses = [
         "DETECTADO", "ESPERANDO_ARCHIVO_ESTABLE", "EN_COLA", "ANALIZANDO",
-        "LISTO_PARA_REVISION", "REQUIERE_REVISION", "PENDIENTE_DE_ENVIO",
+        "REQUIERE_REVISION", "PENDIENTE_DE_ENVIO",
         "DUPLICADO_PROBABLE",
     ]
 
@@ -85,6 +85,10 @@ async def dashboard_status(request: Request, db: AsyncSession = Depends(get_db))
             "transaction_date": str(r.transaction_date) if r.transaction_date else None,
             "amount": float(r.amount) if r.amount else None,
             "bank": r.bank,
+            "ticket_description": r.ticket_description,
+            "group_code": r.group_code,
+            "category_id": str(r.category_id) if r.category_id else None,
+            "account_id": str(r.account_id) if r.account_id else None,
             "status": r.status,
             "confidence_json": r.confidence_json,
             "owner_name": owners.get(r.owner_id, "?"),
@@ -120,6 +124,54 @@ async def expense_detail(
     return HTMLResponse(render("expense_detail.html",
         request=request, user=user, record=record,
         categories=cats.scalars().all(), accounts=accounts.scalars().all()))
+
+
+@router.get("/images/{record_id}/view")
+async def view_image(
+    record_id: str, request: Request, db: AsyncSession = Depends(get_db)
+):
+    user = await get_user(request, db)
+    if not user:
+        return RedirectResponse("/login")
+
+    result = await db.execute(
+        select(ImageFile).where(ImageFile.record_id == record_id)
+    )
+    image = result.scalar_one_or_none()
+    if not image:
+        raise HTTPException(404, "Imagen no encontrada")
+
+    path = image.optimized_path or image.original_path
+    if not os.path.exists(path):
+        raise HTTPException(404, "Archivo de imagen no accesible")
+
+    return FileResponse(path)
+
+
+@router.get("/categories/by-account", response_class=HTMLResponse)
+async def categories_by_account(
+    request: Request, db: AsyncSession = Depends(get_db), account_id: str = "0", category_id: str = ""
+):
+    user = await get_user(request, db)
+    if not user:
+        return HTMLResponse("")
+
+    q = select(CatalogCache).where(
+        CatalogCache.catalog_type == "categoria",
+        CatalogCache.is_active == True,
+    ).order_by(CatalogCache.description)
+
+    if account_id and account_id != "0":
+        q = q.where(CatalogCache.parent_id == account_id)
+
+    cats_result = await db.execute(q)
+    cats = cats_result.scalars().all()
+
+    options = ['<option value="">--</option>']
+    for c in cats:
+        sel = ' selected' if str(c.id) == category_id else ''
+        options.append(f'<option value="{c.id}"{sel}>{c.description}</option>')
+    return HTMLResponse("\n".join(options))
 
 
 @router.put("/expenses/{record_id}")
@@ -158,8 +210,19 @@ async def update_expense(
     if transaction_type is not None:
         record.transaction_type = transaction_type
 
-    if record.group_code and record.consecutive and record.ticket_description:
-        record.final_description = f"{record.group_code}-{record.consecutive}-{record.ticket_description}"
+    if record.group_code and record.ticket_description:
+        if record.consecutive:
+            record.final_description = f"{record.group_code}-{record.consecutive}-{record.ticket_description}"
+        else:
+            record.final_description = f"{record.group_code}--{record.ticket_description}"
+
+    if record.status in ("REQUIERE_REVISION", "PENDIENTE_DE_ENVIO"):
+        required = [record.transaction_date, record.amount, record.bank, record.group_code,
+                    record.category_id, record.account_id, record.transaction_type]
+        if all(required):
+            record.status = "PENDIENTE_DE_ENVIO"
+        else:
+            record.status = "REQUIERE_REVISION"
 
     await db.commit()
     return HTMLResponse('<span style="color:var(--success);">✓ Guardado</span>')
@@ -179,3 +242,33 @@ async def send_expense(
             f'(fila {result.get("row")} en {result.get("tab")})</span>'
         )
     return HTMLResponse(f'<span class="error">{result["error"]}</span>')
+
+
+@router.post("/expenses/bulk-send")
+async def bulk_send_expenses(
+    record_ids: list[str] = Form(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    results = []
+    for rid in record_ids:
+        record = (await db.execute(select(ExpenseRecord).where(ExpenseRecord.id == rid))).scalar_one_or_none()
+        if not record:
+            results.append(f"<span class='error'>{rid[:8]}... no encontrado</span>")
+            continue
+        if not all([record.transaction_date, record.amount, record.bank, record.group_code, record.category_id, record.account_id]):
+            results.append(f"<span class='error'>{record.source_filename}: incompleto</span>")
+            continue
+        if record.status in ("ENVIADO", "ENVIANDO"):
+            results.append(f"<span style='color:var(--muted);'>{record.source_filename}: ya enviado</span>")
+            continue
+        try:
+            result = await send_expense_to_sheets(rid, record.group_code)
+            if result["success"]:
+                results.append(f"<span style='color:var(--success);'>&#10003; {record.source_filename}: fila {result.get('row')}</span>")
+            else:
+                results.append(f"<span class='error'>{record.source_filename}: {result['error']}</span>")
+        except Exception as e:
+            results.append(f"<span class='error'>{record.source_filename}: {e}</span>")
+
+    return HTMLResponse("<br>".join(results))

@@ -181,9 +181,13 @@ class CatalogCache(Base):
     code: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("catalog_cache.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    parent: Mapped["CatalogCache | None"] = relationship("CatalogCache", remote_side=[id], back_populates="children")
+    children: Mapped[list["CatalogCache"]] = relationship("CatalogCache", back_populates="parent")
 
     __table_args__ = (
         UniqueConstraint("catalog_type", "code", name="uq_catalog_cache_type_code"),

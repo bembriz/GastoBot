@@ -103,7 +103,7 @@ async def scan_directory(owner: str, folder: str, db: AsyncSession) -> int:
                 select(ExpenseRecord).join(ImageFile).where(ImageFile.sha256_hash == file_hash)
             )
             rec = record.scalar_one_or_none()
-            if rec:
+            if rec and rec.status == "DETECTADO":
                 rec.status = "DUPLICADO_EXACTO"
                 await db.commit()
             continue

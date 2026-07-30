@@ -1,11 +1,80 @@
 {% extends "base.html" %}
 {% block content %}
-<h2 style="margin-bottom:16px;">
-    {% if user.role == 'admin' %}Todos los comprobantes{% else %}Mis comprobantes{% endif %}
-    <span class="poll-indicator" hx-get="/dashboard/status" hx-trigger="every 3s" hx-swap="outerHTML">actualizando...</span>
-</h2>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <h2 style="margin:0;">
+        {% if user.role == 'admin' %}Todos los comprobantes{% else %}Mis comprobantes{% endif %}
+        <span class="poll-indicator">&#9679; actualizando</span>
+    </h2>
+    <button id="bulk-send-btn" class="btn btn-primary" disabled
+            hx-post="/expenses/bulk-send"
+            hx-target="#bulk-result"
+            hx-swap="innerHTML"
+            hx-include=".chk-record:checked">
+        Enviar seleccionados a Sheets
+    </button>
+</div>
+<div id="bulk-result" style="margin-bottom:8px;"></div>
 
-<div id="expense-list" hx-get="/dashboard/status" hx-trigger="load, every 3s" hx-swap="innerHTML">
+<div id="expense-list" hx-get="/dashboard/status" hx-trigger="every 3s" hx-swap="innerHTML">
     <p>Cargando comprobantes...</p>
 </div>
+
+<script>
+    var selectedIds = new Set();
+    document.body.addEventListener('htmx:afterSettle', function() {
+        var checks = document.querySelectorAll('.chk-record');
+        var btn = document.getElementById('bulk-send-btn');
+        checks.forEach(function(c) {
+            if (selectedIds.has(c.value)) {
+                c.checked = true;
+                c.closest('tr')?.classList.add('row-selected');
+            } else {
+                c.closest('tr')?.classList.remove('row-selected');
+            }
+            c.addEventListener('change', function() {
+                if (c.checked) {
+                    selectedIds.add(c.value);
+                } else {
+                    selectedIds.delete(c.value);
+                }
+                c.closest('tr')?.classList.toggle('row-selected', c.checked);
+                updateBulkBtn();
+            });
+        });
+        var all = document.getElementById('select-all');
+        if (all) {
+            all.addEventListener('change', function() {
+                checks.forEach(function(c) {
+                    if (!c.disabled) {
+                        c.checked = all.checked;
+                        if (c.checked) selectedIds.add(c.value);
+                        else selectedIds.delete(c.value);
+                        c.closest('tr')?.classList.toggle('row-selected', c.checked);
+                    }
+                });
+                updateBulkBtn();
+            });
+        }
+        updateBulkBtn();
+    });
+
+    function updateBulkBtn() {
+        var btn = document.getElementById('bulk-send-btn');
+        if (!btn) return;
+        var anyReady = false;
+        document.querySelectorAll('.chk-record:checked').forEach(function(c) {
+            if (c.dataset.status === 'ready') anyReady = true;
+        });
+        btn.disabled = !anyReady;
+    }
+
+    document.body.addEventListener('htmx:afterRequest', function(evt) {
+        if (evt.detail.target.id === 'bulk-result') {
+            selectedIds.clear();
+            var checks = document.querySelectorAll('.chk-record');
+            checks.forEach(function(c) { c.checked = false; });
+            updateBulkBtn();
+        }
+    });
+</script>
 {% endblock %}

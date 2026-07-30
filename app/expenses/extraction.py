@@ -1,53 +1,58 @@
-"""Extraccion multimodal — analisis de imagenes con Ollama + Qwen3-VL.
+"""Extraccion con Gemini Flash — OCR, patrones visuales y analisis en un solo paso."""
 
-Envia imagenes a Ollama, parsea y valida la respuesta JSON,
-normaliza campos y calcula nivel de confianza.
-"""
-
+import base64
 import json
 import os
 import time
+from datetime import datetime
 from typing import Any
 
-import httpx
+GEMINI_API_KEY = os.environ.get("GASTOSIA_GEMINI_API_KEY", "")
+GEMINI_MODEL = os.environ.get("GASTOSIA_GEMINI_MODEL", "gemini-2.5-flash")
 
-OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("GASTOSIA_OLLAMA_MODEL", "qwen3-vl:4b")
-OLLAMA_TIMEOUT = int(os.environ.get("GASTOSIA_OLLAMA_TIMEOUT", "300"))
+BANK_HINTS = """
+Bancos frecuentes y como identificarlos en la imagen:
+- NU: fondo oscuro/morado, interfaz minimalista, logo de "nU" o "Nu"
+- HEYBANCO: fondo blanco con acentos naranjas/rojos, tipografia moderna, logo circular naranja
+- BANORTE: fondo verde, logo con aguila, interfaz tradicional de banca
+- BBVA: fondo azul, logo BBVA azul, comprobantes de transferencia con diseno corporativo
+- HSBC: fondo rojo, logo hexagonal rojo y blanco
+- SANTANDER: fondo rojo, logo con llama, interfaz corporativa
+- BANAMEX/CITIBANAMEX: fondo azul marino, logo de Citibanamex
+"""
 
-PROMPT_EXTRACCION = """Analiza esta imagen de un ticket/comprobante bancario mexicano y extrae los siguientes campos en formato JSON:
+PROMPT_EXTRACCION = f"""Analiza esta imagen de un ticket o comprobante bancario mexicano. Observa tanto el texto como los elementos visuales (colores, logos, interfaz) para identificar el banco.
 
-{
+{BANK_HINTS}
+
+Devuelve SOLO un JSON sin markdown ni explicaciones:
+
+{{
   "transaction_date": "YYYY-MM-DD",
   "amount": 0.00,
-  "ticket_description": "descripcion breve del gasto en espanol",
-  "bank": "nombre del banco (NU, BANORTE, BBVA, HEYBANCO, etc.)",
-  "transaction_type": "Transferencia|Credito",
-  "confidence": {
-    "transaction_date": 0.0,
-    "amount": 0.0,
-    "ticket_description": 0.0,
-    "bank": 0.0,
-    "transaction_type": 0.0
-  }
-}
+  "ticket_description": "descripcion breve en espanol",
+  "bank": "NOMBRE_DEL_BANCO",
+  "transaction_type": "Transferencia|Credito"
+}}
 
-Reglas:
-- transaction_date: usa la fecha del ticket en formato YYYY-MM-DD, NO la fecha actual
-- amount: SOLO el numero decimal, sin signo de pesos ni comillas
-- ticket_description: descripcion breve en espanol del concepto del gasto
-- bank: nombre del banco en MAYUSCULAS
-- transaction_type: SOLO "Transferencia" o "Credito"
-- confidence: numero entre 0.0 y 1.0 indicando tu nivel de certeza para cada campo
-
-Responde UNICAMENTE con el JSON, sin ningun otro texto."""
+Reglas IMPORTANTES:
+- transaction_date: fecha del ticket en YYYY-MM-DD, inferir del contexto visual si no hay texto
+- amount: SOLO numero decimal, sin signo de pesos ni comillas
+- ticket_description: concepto breve, maximo una linea. Si el ticket es de tarjeta de credito con concepto BPK*, usa ese concepto
+- bank: nombre del banco EMISOR (el que genero el comprobante), en MAYUSCULAS. Observa colores, logos y diseno de la interfaz. SIEMPRE intenta identificar el banco, aunque no este escrito explicitamente
+- transaction_type: "Transferencia" si es envio de dinero, "Credito" si es deposito/abono
+- Si no puedes identificar un campo con certeza, usa null"""
 
 
 async def extract_from_image(image_path: str) -> dict[str, Any]:
-    import base64
-
-    with open(image_path, "rb") as f:
-        image_b64 = base64.b64encode(f.read()).decode("utf-8")
+    if not GEMINI_API_KEY:
+        return {
+            "raw_response": "",
+            "parsed_json": None,
+            "is_valid_json": False,
+            "elapsed_ms": 0,
+            "error_message": "Gemini API key no configurada",
+        }
 
     t0 = time.monotonic()
     error_msg = None
@@ -56,25 +61,21 @@ async def extract_from_image(image_path: str) -> dict[str, Any]:
     is_valid = False
 
     try:
-        async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
-            response = await client.post(
-                f"{OLLAMA_URL}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "prompt": PROMPT_EXTRACCION,
-                    "images": [image_b64],
-                    "stream": False,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-            raw_response = data.get("response", "")
-    except httpx.TimeoutException:
-        error_msg = "Timeout de Ollama"
-    except httpx.HTTPError as e:
-        error_msg = f"Error HTTP Ollama: {e}"
+        from google import genai
+
+        with open(image_path, "rb") as f:
+            image_data = f.read()
+
+        mime = _guess_mime(image_path)
+
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[PROMPT_EXTRACCION, {"inline_data": {"mime_type": mime, "data": base64.b64encode(image_data).decode("utf-8")}}],
+        )
+        raw_response = response.text or ""
     except Exception as e:
-        error_msg = f"Error inesperado: {e}"
+        error_msg = f"Error Gemini: {e}"
 
     elapsed_ms = int((time.monotonic() - t0) * 1000)
 
@@ -93,9 +94,17 @@ async def extract_from_image(image_path: str) -> dict[str, Any]:
     }
 
 
+def _guess_mime(path: str) -> str:
+    ext = os.path.splitext(path)[1].lower()
+    if ext in (".png",):
+        return "image/png"
+    if ext in (".webp",):
+        return "image/webp"
+    return "image/jpeg"
+
+
 def _parse_json_response(text: str) -> tuple[dict | None, bool]:
     text = text.strip()
-
     if "```json" in text:
         text = text.split("```json")[1].split("```")[0].strip()
     elif "```" in text:
@@ -134,6 +143,6 @@ def _normalize_extraction(data: dict) -> dict:
         data["bank"] = str(data["bank"]).strip().upper()
 
     if "confidence" not in data:
-        data["confidence"] = {k: 0.5 for k in ["transaction_date", "amount", "ticket_description", "bank", "transaction_type"]}
+        data["confidence"] = {k: 0.8 for k in ["transaction_date", "amount", "ticket_description", "bank", "transaction_type"]}
 
     return data
