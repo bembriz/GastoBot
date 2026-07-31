@@ -93,9 +93,11 @@ El codigo DEBE manejar explicitamente (PRD §8.2):
 ```python
 import errno
 
+
 def is_smb_transient_error(error: OSError) -> bool:
     """Determina si un error de OS es un bloqueo temporal SMB."""
     return error.errno in (errno.EACCES, errno.EBUSY)
+
 
 # Uso:
 try:

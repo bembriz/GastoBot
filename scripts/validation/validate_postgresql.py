@@ -3,9 +3,8 @@
 Ejecutar: python scripts/validation/validate_postgresql.py"""
 
 import os
-import sys
-import json
 import subprocess
+import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -17,7 +16,10 @@ DB_USER = os.environ.get("GASTOSIA_DATABASE_USER", "gastos_app")
 DB_PASSWORD = os.environ.get("GASTOSIA_DATABASE_PASSWORD", "")
 DB_ADMIN_PASSWORD = os.environ.get("GASTOSIA_POSTGRES_ADMIN_PASSWORD", "")
 
-def run_sql(sql: str, user: str = "postgres", password: str | None = None, db: str = "postgres") -> tuple[int, str, str]:
+
+def run_sql(
+    sql: str, user: str = "postgres", password: str | None = None, db: str = "postgres"
+) -> tuple[int, str, str]:
     """Ejecutar comando SQL via psql y devolver (exit_code, stdout, stderr)."""
     env = os.environ.copy()
     if password is None:
@@ -26,15 +28,21 @@ def run_sql(sql: str, user: str = "postgres", password: str | None = None, db: s
         env["PGPASSWORD"] = password
     cmd = [
         "psql",
-        "-h", DB_HOST,
-        "-p", DB_PORT,
-        "-U", user,
-        "-d", db,
-        "-c", sql,
+        "-h",
+        DB_HOST,
+        "-p",
+        DB_PORT,
+        "-U",
+        user,
+        "-d",
+        db,
+        "-c",
+        sql,
         "-w",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=15)
     return result.returncode, result.stdout, result.stderr
+
 
 def main() -> int:
     results: list[dict] = []
@@ -65,9 +73,7 @@ def main() -> int:
 
     # 2. Crear base de datos
     print("\n[2/7] Creando base de datos gastos_ia...")
-    rc, stdout, stderr = run_sql(
-        f"SELECT 1 FROM pg_database WHERE datname='{DB_NAME}';"
-    )
+    rc, stdout, stderr = run_sql(f"SELECT 1 FROM pg_database WHERE datname='{DB_NAME}';")
     if rc == 0 and "1" in stdout:
         print(f"[OK]   Base '{DB_NAME}' ya existe")
         results.append({"check": "base de datos", "status": "passed", "detail": "ya existe"})
@@ -78,43 +84,47 @@ def main() -> int:
             results.append({"check": "base de datos", "status": "passed", "detail": "creada"})
         else:
             print(f"[FAIL] No se pudo crear: {err2.strip()[:200]}")
-            results.append({"check": "base de datos", "status": "failed", "detail": err2.strip()[:200]})
+            results.append(
+                {"check": "base de datos", "status": "failed", "detail": err2.strip()[:200]}
+            )
             failed += 1
             return 1
     passed += 1
 
     # 3. Crear usuario
     print(f"\n[3/7] Verificando usuario {DB_USER}...")
-    rc, stdout, stderr = run_sql(
-        f"SELECT 1 FROM pg_roles WHERE rolname='{DB_USER}';"
-    )
+    rc, stdout, stderr = run_sql(f"SELECT 1 FROM pg_roles WHERE rolname='{DB_USER}';")
     if rc == 0 and "1" in stdout:
         print(f"[OK]   Usuario '{DB_USER}' ya existe")
         results.append({"check": "usuario", "status": "passed", "detail": "ya existe"})
     else:
-        rc2, out2, err2 = run_sql(
-            f"CREATE USER {DB_USER} WITH PASSWORD '{DB_PASSWORD}';"
-        )
+        rc2, out2, err2 = run_sql(f"CREATE USER {DB_USER} WITH PASSWORD '{DB_PASSWORD}';")
         if rc2 == 0:
             print(f"[OK]   Usuario '{DB_USER}' creado")
             results.append({"check": "usuario", "status": "passed", "detail": "creado"})
         else:
             # Try without password if env var is empty
-            rc3, out3, err3 = run_sql(
-                f"CREATE USER {DB_USER} WITH PASSWORD 'changeme123';"
-            )
+            rc3, out3, err3 = run_sql(f"CREATE USER {DB_USER} WITH PASSWORD 'changeme123';")
             if rc3 == 0:
                 print(f"[OK]   Usuario '{DB_USER}' creado (password temporal)")
-                results.append({"check": "usuario", "status": "passed", "detail": "creado con password temporal"})
+                results.append(
+                    {
+                        "check": "usuario",
+                        "status": "passed",
+                        "detail": "creado con password temporal",
+                    }
+                )
             else:
                 print(f"[FAIL] No se pudo crear usuario: {err3.strip()[:200]}")
-                results.append({"check": "usuario", "status": "failed", "detail": err3.strip()[:200]})
+                results.append(
+                    {"check": "usuario", "status": "failed", "detail": err3.strip()[:200]}
+                )
                 failed += 1
                 return 1
     passed += 1
 
     # 4. Otorgar permisos
-    print(f"\n[4/7] Otorgando permisos...")
+    print("\n[4/7] Otorgando permisos...")
     grants = [
         f"GRANT CONNECT ON DATABASE {DB_NAME} TO {DB_USER};",
         f"GRANT USAGE ON SCHEMA public TO {DB_USER};",
@@ -131,12 +141,12 @@ def main() -> int:
         print(f"[OK]   Permisos otorgados a {DB_USER}")
         results.append({"check": "permisos", "status": "passed", "detail": "todos otorgados"})
     else:
-        print(f"[WARN] Algunos permisos fallaron (pueden ya existir)")
+        print("[WARN] Algunos permisos fallaron (pueden ya existir)")
         results.append({"check": "permisos", "status": "warning", "detail": "parcial"})
     passed += 1
 
     # 5. Crear tabla de prueba
-    print(f"\n[5/7] Creando tabla de prueba...")
+    print("\n[5/7] Creando tabla de prueba...")
     rc, stdout, stderr = run_sql(
         "CREATE TABLE IF NOT EXISTS _test_fase0 (id SERIAL PRIMARY KEY, test_value TEXT, created_at TIMESTAMP DEFAULT NOW());"
         "INSERT INTO _test_fase0 (test_value) VALUES ('fase0-validation');"
@@ -144,19 +154,21 @@ def main() -> int:
         db=DB_NAME,
     )
     if rc == 0:
-        print(f"[OK]   Tabla de prueba creada y operada")
+        print("[OK]   Tabla de prueba creada y operada")
         results.append({"check": "tabla prueba", "status": "passed", "detail": "CRUD exitoso"})
         passed += 1
     else:
         print(f"[FAIL] Error: {stderr.strip()[:200]}")
-        results.append({"check": "tabla prueba", "status": "failed", "detail": stderr.strip()[:200]})
+        results.append(
+            {"check": "tabla prueba", "status": "failed", "detail": stderr.strip()[:200]}
+        )
         failed += 1
 
     # 6. Limpiar tabla de prueba
-    print(f"\n[6/7] Limpiando tabla de prueba...")
+    print("\n[6/7] Limpiando tabla de prueba...")
     rc, stdout, stderr = run_sql("DROP TABLE IF EXISTS _test_fase0;", db=DB_NAME)
     if rc == 0:
-        print(f"[OK]   Tabla de prueba eliminada")
+        print("[OK]   Tabla de prueba eliminada")
         results.append({"check": "limpieza", "status": "passed", "detail": "tabla eliminada"})
         passed += 1
     else:
@@ -164,18 +176,24 @@ def main() -> int:
         results.append({"check": "limpieza", "status": "warning", "detail": stderr.strip()[:100]})
 
     # 7. Conexiones activas
-    print(f"\n[7/7] Verificando conexiones activas...")
+    print("\n[7/7] Verificando conexiones activas...")
     rc, stdout, stderr = run_sql(
         "SELECT count(*) as active FROM pg_stat_activity WHERE datname = current_database();",
         db=DB_NAME,
     )
     if rc == 0:
-        print(f"[OK]   Conexiones activas: {stdout.strip().split()[-1] if stdout.strip() else 'N/A'}")
-        results.append({"check": "conexiones activas", "status": "passed", "detail": "monitoreo OK"})
+        print(
+            f"[OK]   Conexiones activas: {stdout.strip().split()[-1] if stdout.strip() else 'N/A'}"
+        )
+        results.append(
+            {"check": "conexiones activas", "status": "passed", "detail": "monitoreo OK"}
+        )
         passed += 1
     else:
         print(f"[WARN] No se pudo consultar: {stderr.strip()[:100]}")
-        results.append({"check": "conexiones activas", "status": "warning", "detail": "no disponible"})
+        results.append(
+            {"check": "conexiones activas", "status": "warning", "detail": "no disponible"}
+        )
 
     # Summary
     total = passed + failed

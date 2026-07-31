@@ -1,0 +1,84 @@
+{
+  "skill_name": "skill-fase5-aceptacion",
+  "phase": "fase5",
+  "timestamp": "2026-07-30T05:30:00Z",
+  "status": "passed",
+  "summary": "Manual operativo completado en docs/manual-operativo.md. Cubre: requisitos del cliente (hosts, certificado), inicio de sesion, procesar un ticket, revisar y completar formulario, enviar a Google Sheets, catalogos (admin), historial (admin), y resolucion de problemas. 171 lineas, 8 secciones.",
+  "metrics": {
+    "secciones": 8,
+    "lineas": 171,
+    "criterios_cubiertos": 5,
+    "errors_count": 0,
+    "warnings_count": 0
+  },
+  "checks": [
+    {
+      "id": "MAN-01",
+      "description": "Requisitos del cliente (hosts, certificado)",
+      "status": "passed",
+      "detail": "Seccion 1: configurar hosts en Windows, aceptar certificado"
+    },
+    {
+      "id": "MAN-02",
+      "description": "Inicio de sesion (Ruben y Esme)",
+      "status": "passed",
+      "detail": "Seccion 2: login, cambio de password inicial"
+    },
+    {
+      "id": "MAN-03",
+      "description": "Procesar un ticket (copiar a SMB)",
+      "status": "passed",
+      "detail": "Seccion 3: flujo completo desde copia a pendientes/"
+    },
+    {
+      "id": "MAN-04",
+      "description": "Revisar y completar formulario",
+      "status": "passed",
+      "detail": "Seccion 4: campos requeridos, dropdowns, precio/total sync"
+    },
+    {
+      "id": "MAN-05",
+      "description": "Enviar a Google Sheets",
+      "status": "passed",
+      "detail": "Seccion 5: boton Enviar, confirmacion"
+    },
+    {
+      "id": "MAN-06",
+      "description": "Catalogos (admin)",
+      "status": "passed",
+      "detail": "Seccion 6: CRUD categorias y cuentas"
+    },
+    {
+      "id": "MAN-07",
+      "description": "Historial (admin)",
+      "status": "passed",
+      "detail": "Seccion 7: busqueda, filtros, actualizacion"
+    },
+    {
+      "id": "MAN-08",
+      "description": "Resolucion de problemas",
+      "status": "passed",
+      "detail": "Seccion 8: troubleshooting comun"
+    }
+  ],
+  "artifacts_generated": [
+    {
+      "path": "docs/manual-operativo.md",
+      "type": "documentation",
+      "description": "Manual operativo final para usuarios"
+    },
+    {
+      "path": "harness/evidence/fase5/manual-operativo.json",
+      "type": "report"
+    },
+    {
+      "path": "harness/evidence/fase5/manual-operativo.md",
+      "type": "report"
+    }
+  ],
+  "errors": [],
+  "warnings": [],
+  "next_steps": [
+    "Entregar manual a Ruben y Esme para validacion HITL"
+  ]
+}

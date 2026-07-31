@@ -1,6 +1,5 @@
 import json
 
-import pytest
 from app.expenses.extraction import _normalize_extraction, _parse_json_response
 
 

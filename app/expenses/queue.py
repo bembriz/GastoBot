@@ -1,4 +1,4 @@
-"""Cola FIFO de procesamiento — un solo worker para Ollama.
+"""Cola FIFO de procesamiento — un solo worker para extraccion multimodal.
 
 Garantiza procesamiento secuencial estricto:
 - Solo una imagen en ANALIZANDO a la vez
@@ -8,12 +8,13 @@ Garantiza procesamiento secuencial estricto:
 """
 
 import asyncio
+import contextlib
 import os
 import shutil
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import ExpenseRecord, ExtractionRun, ImageFile, ProcessingQueue
@@ -24,7 +25,7 @@ WORKER_ID = str(uuid.uuid4())[:8]
 STALE_TIMEOUT_SECONDS = 600
 
 
-def _move_to_procesados(original_path: str, owner_folder: str) -> None:
+def _move_to_procesados(original_path: str, owner_folder: str) -> str | None:
     try:
         src_dir = os.path.dirname(original_path)
         procesados_dir = os.path.join(os.path.dirname(src_dir), "procesados")
@@ -34,8 +35,10 @@ def _move_to_procesados(original_path: str, owner_folder: str) -> None:
         shutil.copy2(original_path, dst)
         os.remove(original_path)
         print(f"[Worker] Movido a procesados: {filename}")
+        return dst
     except Exception as e:
         print(f"[Worker] Error moviendo archivo: {e}")
+        return None
 
 
 async def claim_next_job(db: AsyncSession) -> ProcessingQueue | None:
@@ -52,13 +55,11 @@ async def claim_next_job(db: AsyncSession) -> ProcessingQueue | None:
         return None
 
     job.status = "ANALIZANDO"
-    job.claimed_at = datetime.now(timezone.utc)
+    job.claimed_at = datetime.now(UTC)
     job.worker_id = WORKER_ID
     job.attempts += 1
 
-    record_result = await db.execute(
-        select(ExpenseRecord).where(ExpenseRecord.id == job.record_id)
-    )
+    record_result = await db.execute(select(ExpenseRecord).where(ExpenseRecord.id == job.record_id))
     record = record_result.scalar_one_or_none()
     if record:
         record.status = "ANALIZANDO"
@@ -68,8 +69,8 @@ async def claim_next_job(db: AsyncSession) -> ProcessingQueue | None:
 
 
 async def recover_stale_jobs(db: AsyncSession) -> int:
-    cutoff = datetime.now(timezone.utc).timestamp() - STALE_TIMEOUT_SECONDS
-    stale_cutoff = datetime.fromtimestamp(cutoff, tz=timezone.utc)
+    cutoff = datetime.now(UTC).timestamp() - STALE_TIMEOUT_SECONDS
+    stale_cutoff = datetime.fromtimestamp(cutoff, tz=UTC)
 
     result = await db.execute(
         select(ProcessingQueue).where(
@@ -98,8 +99,10 @@ async def recover_stale_jobs(db: AsyncSession) -> int:
     return count
 
 
-async def complete_job(db: AsyncSession, job: ProcessingQueue, success: bool, error_msg: str | None = None) -> None:
-    job.completed_at = datetime.now(timezone.utc)
+async def complete_job(
+    db: AsyncSession, job: ProcessingQueue, success: bool, error_msg: str | None = None
+) -> None:
+    job.completed_at = datetime.now(UTC)
     if success:
         job.status = "COMPLETADO"
         record_result = await db.execute(
@@ -136,7 +139,9 @@ async def worker_loop() -> None:
                 if job:
                     print(f"[Worker] Reclamado job {job.record_id} (intento {job.attempts})")
                     success = await process_job(db, job)
-                    await complete_job(db, job, success, None if success else "Error de procesamiento")
+                    await complete_job(
+                        db, job, success, None if success else "Error de procesamiento"
+                    )
                 else:
                     await asyncio.sleep(2)
         except Exception as e:
@@ -145,16 +150,12 @@ async def worker_loop() -> None:
 
 
 async def process_job(db: AsyncSession, job: ProcessingQueue) -> bool:
-    record_result = await db.execute(
-        select(ExpenseRecord).where(ExpenseRecord.id == job.record_id)
-    )
+    record_result = await db.execute(select(ExpenseRecord).where(ExpenseRecord.id == job.record_id))
     record = record_result.scalar_one_or_none()
     if not record:
         return False
 
-    image_result = await db.execute(
-        select(ImageFile).where(ImageFile.record_id == record.id)
-    )
+    image_result = await db.execute(select(ImageFile).where(ImageFile.record_id == record.id))
     image = image_result.scalar_one_or_none()
     if not image:
         return False
@@ -166,9 +167,20 @@ async def process_job(db: AsyncSession, job: ProcessingQueue) -> bool:
     print(f"[Worker] Analizando imagen: {image_path}")
     extraction = await extract_from_image(image_path)
 
+    engine = extraction.get("engine") or "?"
+    if extraction.get("error_message"):
+        print(f"[Worker] ERROR [{engine}] {extraction['error_message']}", flush=True)
+    elif not extraction.get("is_valid_json"):
+        print(f"[Worker] ADVERTENCIA [{engine}]: JSON invalido", flush=True)
+    else:
+        print(
+            f"[Worker] OK [{engine}] en {extraction.get('elapsed_ms', 0)}ms",
+            flush=True,
+        )
+
     extraction_run = ExtractionRun(
         record_id=record.id,
-        model_name="qwen3-vl:4b",
+        model_name=extraction.get("engine") or "desconocido",
         prompt_version="1.0",
         raw_response=extraction.get("raw_response", ""),
         parsed_json=extraction.get("parsed_json"),
@@ -181,10 +193,8 @@ async def process_job(db: AsyncSession, job: ProcessingQueue) -> bool:
     if extraction.get("is_valid_json") and extraction.get("parsed_json"):
         parsed = extraction["parsed_json"]
         if parsed.get("transaction_date"):
-            try:
-                record.transaction_date = datetime.strptime(parsed["transaction_date"], "%Y-%m-%d").date()
-            except (ValueError, TypeError):
-                pass
+            with contextlib.suppress(ValueError, TypeError):
+                record.transaction_date = datetime.strptime(parsed["transaction_date"], "%Y-%m-%d")
         if parsed.get("amount"):
             record.amount = parsed["amount"]
         record.ticket_description = parsed.get("ticket_description")
@@ -195,7 +205,9 @@ async def process_job(db: AsyncSession, job: ProcessingQueue) -> bool:
     success = extraction.get("parsed_json") is not None
 
     if success and image.original_path:
-        _move_to_procesados(image.original_path, image.owner_folder)
+        new_path = _move_to_procesados(image.original_path, image.owner_folder)
+        if new_path:
+            image.original_path = new_path
 
     await db.commit()
     return success

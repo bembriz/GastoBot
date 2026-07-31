@@ -1,13 +1,15 @@
 """Historial de gastos — busqueda, filtros, edicion."""
 
-from datetime import date, datetime
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import Response
 
-from app.auth.permissions import get_current_user, session_cookie_name, verify_session
+from app.auth.permissions import get_current_user
+from app.auth.session import session_cookie_name, verify_session
 from app.database.models import ExpenseRecord, User
 from app.database.session import get_db
 from app.templates import render
@@ -31,7 +33,7 @@ async def history_page(
     request: Request,
     q: str = Query(None),
     db: AsyncSession = Depends(get_db),
-):
+) -> Response:
     user = await get_user_req(request, db)
     if not user:
         return RedirectResponse("/login")
@@ -51,8 +53,9 @@ async def history_page(
     result = await db.execute(query)
     records = result.scalars().all()
 
-    return HTMLResponse(render("history.html",
-        request=request, user=user, records=records, q=q or ""))
+    return HTMLResponse(
+        render("history.html", request=request, user=user, records=records, q=q or "")
+    )
 
 
 @router.put("/{record_id}")
@@ -63,14 +66,14 @@ async def update_history_record(
     bank: str = Form(None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> HTMLResponse:
     result = await db.execute(select(ExpenseRecord).where(ExpenseRecord.id == record_id))
     record = result.scalar_one_or_none()
     if not record:
         return HTMLResponse('<span class="error">No encontrado</span>')
 
     if transaction_date:
-        record.transaction_date = datetime.strptime(transaction_date, "%Y-%m-%d").date()
+        record.transaction_date = datetime.strptime(transaction_date, "%Y-%m-%d")
     if amount is not None:
         record.amount = amount
     if bank:

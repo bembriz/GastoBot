@@ -8,14 +8,14 @@ Requiere:
   - Imágenes en ejemplos/
 """
 
+import argparse
+import base64
+import json
 import os
 import sys
-import json
 import time
-import base64
-import argparse
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 EJEMPLOS_DIR = PROJECT_ROOT / "ejemplos"
@@ -52,8 +52,9 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional."""
 def get_image_paths(quick: bool = False) -> list[Path]:
     """Obtener lista de imágenes del directorio ejemplos/."""
     extensions = {".jpg", ".jpeg", ".png", ".webp"}
-    images = [p for p in EJEMPLOS_DIR.iterdir()
-              if p.suffix.lower() in extensions and p.stat().st_size > 0]
+    images = [
+        p for p in EJEMPLOS_DIR.iterdir() if p.suffix.lower() in extensions and p.stat().st_size > 0
+    ]
     images.sort()
     if quick:
         images = images[:25]
@@ -68,15 +69,17 @@ def image_to_base64(path: Path) -> str:
 
 def call_ollama(model: str, base64_image: str) -> dict:
     """Llamar a la API de Ollama con una imagen y devolver respuesta parseada."""
-    import urllib.request
     import urllib.error
+    import urllib.request
 
-    payload = json.dumps({
-        "model": model,
-        "prompt": PROMPT_EXTRACCION,
-        "images": [base64_image],
-        "stream": False,
-    }).encode("utf-8")
+    payload = json.dumps(
+        {
+            "model": model,
+            "prompt": PROMPT_EXTRACCION,
+            "images": [base64_image],
+            "stream": False,
+        }
+    ).encode("utf-8")
 
     try:
         req = urllib.request.Request(
@@ -106,7 +109,7 @@ def parse_json_response(response_text: str) -> tuple[dict | None, bool]:
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
-        text = text[start:end + 1]
+        text = text[start : end + 1]
 
     try:
         data = json.loads(text)
@@ -135,11 +138,7 @@ def validate_extraction(data: dict | None, is_valid_json: bool) -> dict:
     types_invalid = []
     for field in present:
         val = data.get(field)
-        if field == "amount" and isinstance(val, (int, float)):
-            types_valid.append(field)
-        elif field == "transaction_date" and isinstance(val, str):
-            types_valid.append(field)
-        elif field in ("ticket_description", "bank", "transaction_type") and isinstance(val, str):
+        if field == "amount" and isinstance(val, (int, float)) or field == "transaction_date" and isinstance(val, str) or field in ("ticket_description", "bank", "transaction_type") and isinstance(val, str):
             types_valid.append(field)
         else:
             types_invalid.append(field)
@@ -156,9 +155,9 @@ def validate_extraction(data: dict | None, is_valid_json: bool) -> dict:
 def benchmark_model(model: str, images: list[Path]) -> list[dict]:
     """Ejecutar benchmark para un modelo específico."""
     results = []
-    print(f"\n{'='*40}")
+    print(f"\n{'=' * 40}")
     print(f"Benchmark: {model}")
-    print(f"{'='*40}")
+    print(f"{'=' * 40}")
 
     for i, img_path in enumerate(images, 1):
         print(f"\n[{i}/{len(images)}] {img_path.name} ({img_path.stat().st_size / 1024:.0f} KB)")
@@ -172,17 +171,19 @@ def benchmark_model(model: str, images: list[Path]) -> list[dict]:
             t2 = time.monotonic()
 
             if "error" in response:
-                results.append({
-                    "image": img_path.name,
-                    "model": model,
-                    "encode_ms": (t1 - t0) * 1000,
-                    "inference_ms": (t2 - t1) * 1000,
-                    "total_ms": (t2 - t0) * 1000,
-                    "error": response["error"],
-                    "valid_json": False,
-                    "response_text": "",
-                    "validation": {},
-                })
+                results.append(
+                    {
+                        "image": img_path.name,
+                        "model": model,
+                        "encode_ms": (t1 - t0) * 1000,
+                        "inference_ms": (t2 - t1) * 1000,
+                        "total_ms": (t2 - t0) * 1000,
+                        "error": response["error"],
+                        "valid_json": False,
+                        "response_text": "",
+                        "validation": {},
+                    }
+                )
                 print(f"  [FAIL] {response['error']}")
                 continue
 
@@ -190,33 +191,39 @@ def benchmark_model(model: str, images: list[Path]) -> list[dict]:
             data, is_valid = parse_json_response(response_text)
             validation = validate_extraction(data, is_valid)
 
-            results.append({
-                "image": img_path.name,
-                "model": model,
-                "encode_ms": (t1 - t0) * 1000,
-                "inference_ms": (t2 - t1) * 1000,
-                "total_ms": (t2 - t0) * 1000,
-                "valid_json": is_valid,
-                "response_text": response_text[:500],
-                "extracted": data,
-                "validation": validation,
-            })
+            results.append(
+                {
+                    "image": img_path.name,
+                    "model": model,
+                    "encode_ms": (t1 - t0) * 1000,
+                    "inference_ms": (t2 - t1) * 1000,
+                    "total_ms": (t2 - t0) * 1000,
+                    "valid_json": is_valid,
+                    "response_text": response_text[:500],
+                    "extracted": data,
+                    "validation": validation,
+                }
+            )
 
             status = "OK" if is_valid else "FAIL"
             fields = validation.get("fields_present", [])
             missing = validation.get("fields_missing", [])
-            print(f"  [{status}] JSON={'OK' if is_valid else 'INVALID'} "
-                  f"| campos={len(fields)}/{len(fields)+len(missing)} "
-                  f"| t={(t2 - t0):.1f}s")
+            print(
+                f"  [{status}] JSON={'OK' if is_valid else 'INVALID'} "
+                f"| campos={len(fields)}/{len(fields) + len(missing)} "
+                f"| t={(t2 - t0):.1f}s"
+            )
 
         except Exception as e:
-            results.append({
-                "image": img_path.name,
-                "model": model,
-                "error": f"{type(e).__name__}: {str(e)}",
-                "valid_json": False,
-                "validation": {},
-            })
+            results.append(
+                {
+                    "image": img_path.name,
+                    "model": model,
+                    "error": f"{type(e).__name__}: {str(e)}",
+                    "valid_json": False,
+                    "validation": {},
+                }
+            )
             print(f"  [FAIL] {type(e).__name__}: {e}")
 
     return results
@@ -257,6 +264,7 @@ def main() -> int:
     # Verificar Ollama
     try:
         import urllib.request
+
         req = urllib.request.Request(f"{OLLAMA_URL}/api/tags")
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
@@ -304,16 +312,22 @@ def main() -> int:
         metrics = compute_metrics(all_results, model)
         print(f"\n{model}:")
         print(f"  Imágenes: {metrics['total_images']}")
-        print(f"  JSON válido: {metrics['valid_json']}/{metrics['total_images']} ({metrics['valid_json_pct']:.1f}%)")
+        print(
+            f"  JSON válido: {metrics['valid_json']}/{metrics['total_images']} ({metrics['valid_json_pct']:.1f}%)"
+        )
         print(f"  Errores: {metrics['errors']}")
         print(f"  Tiempo promedio: {metrics['avg_total_ms']:.0f}ms")
         print(f"  Campos promedio: {metrics['avg_fields_present']}/5")
 
     # Guardar resultados
-    output_path = Path(args.output) if args.output else PROJECT_ROOT / "harness" / "evidence" / "fase0" / "benchmark-modelos.json"
+    output_path = (
+        Path(args.output)
+        if args.output
+        else PROJECT_ROOT / "harness" / "evidence" / "fase0" / "benchmark-modelos.json"
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_data = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "ollama_url": OLLAMA_URL,
         "models_tested": models_to_test,
         "total_images": len(images),

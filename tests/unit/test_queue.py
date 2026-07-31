@@ -1,8 +1,7 @@
 import uuid
-from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from app.expenses.queue import (
     STALE_TIMEOUT_SECONDS,
     WORKER_ID,
@@ -21,7 +20,7 @@ def _fake_queue_entry(status="EN_COLA", claimed_at=None, attempts=0):
     job.id = TEST_QUEUE_ID
     job.record_id = TEST_RECORD_ID
     job.status = status
-    job.enqueued_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    job.enqueued_at = datetime(2026, 1, 1, tzinfo=UTC)
     job.claimed_at = claimed_at
     job.completed_at = None
     job.worker_id = None
@@ -166,7 +165,7 @@ class TestCompleteJob:
 class TestRecoverStaleJobs:
     async def test_recover_stale_jobs_with_stale_entries(self):
         db = AsyncMock()
-        stale_time = datetime.now(timezone.utc) - timedelta(seconds=STALE_TIMEOUT_SECONDS + 60)
+        stale_time = datetime.now(UTC) - timedelta(seconds=STALE_TIMEOUT_SECONDS + 60)
         job1 = _fake_queue_entry(status="ANALIZANDO", claimed_at=stale_time, attempts=2)
         job2 = _fake_queue_entry(status="ANALIZANDO", claimed_at=stale_time, attempts=1)
         record1 = _fake_record(status="ANALIZANDO")
@@ -191,8 +190,8 @@ class TestRecoverStaleJobs:
 
     async def test_recover_stale_jobs_no_stale_entries(self):
         db = AsyncMock()
-        recent_time = datetime.now(timezone.utc) - timedelta(seconds=60)
-        job = _fake_queue_entry(status="ANALIZANDO", claimed_at=recent_time)
+        recent_time = datetime.now(UTC) - timedelta(seconds=60)
+        _fake_queue_entry(status="ANALIZANDO", claimed_at=recent_time)
 
         db.execute.side_effect = [
             _fake_result_scalars([]),
@@ -205,7 +204,7 @@ class TestRecoverStaleJobs:
 
     async def test_recover_stale_jobs_multiple_stale_with_mixed_records(self):
         db = AsyncMock()
-        stale_time = datetime.now(timezone.utc) - timedelta(seconds=STALE_TIMEOUT_SECONDS + 3600)
+        stale_time = datetime.now(UTC) - timedelta(seconds=STALE_TIMEOUT_SECONDS + 3600)
         job1 = _fake_queue_entry(status="ANALIZANDO", claimed_at=stale_time)
         job2 = _fake_queue_entry(status="ANALIZANDO", claimed_at=stale_time)
         record1 = _fake_record(status="ANALIZANDO")

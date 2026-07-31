@@ -1,0 +1,29 @@
+<div id="error-log">
+{% if errors %}
+<div class="card" style="margin-top:16px;">
+    <h3 style="margin-bottom:8px;color:var(--danger);">Errores recientes de extraccion</h3>
+    <table>
+        <thead>
+            <tr>
+                <th style="width:80px;">Hora</th>
+                <th style="width:100px;">Motor</th>
+                <th>Archivo</th>
+                <th>Error</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in errors %}
+            <tr>
+                <td>{{ e.timestamp }}</td>
+                <td>{{ e.engine }}</td>
+                <td>{{ e.filename }}</td>
+                <td style="color:var(--danger);font-size:12px;">{{ e.message }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div id="error-log" style="display:none;"></div>
+{% endif %}
+</div>

@@ -1,0 +1,207 @@
+{
+  "skill_name": "skill-fase5-aceptacion",
+  "phase": "fase5",
+  "timestamp": "2026-07-30T06:30:00Z",
+  "status": "passed",
+  "duration_seconds": 24.47,
+  "summary": "Tests E2E con Playwright + Chromium headless completados. 25 tests: 16 verifican rutas publicas y proteccion de autenticacion, 9 verifican rutas protegidas con sesion autenticada (dashboard, catalogos, historial, API me, categories). Usuario E2E creado via async DB en thread separado. Servidor FastAPI en puerto dinamico.",
+  "metrics": {
+    "tests_total": 25,
+    "tests_passed": 25,
+    "tests_failed": 0,
+    "errors_count": 0,
+    "warnings_count": 0
+  },
+  "checks": [
+    {
+      "id": "E2E-01",
+      "description": "Login page loads",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-02",
+      "description": "Login form presente",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-03",
+      "description": "Login invalido manejado",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-04",
+      "description": "Redireccion sin autenticacion",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-05",
+      "description": "Health endpoint",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-06",
+      "description": "Archivos estaticos",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-07",
+      "description": "Catalogos requiere auth",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-08",
+      "description": "Catalogos anonimo bloqueado",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-09",
+      "description": "Expense requiere auth",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-10",
+      "description": "API me requiere auth",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-11",
+      "description": "Categories endpoint",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-12",
+      "description": "History requiere auth",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-13",
+      "description": "History search requiere auth",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-14",
+      "description": "Dashboard requiere auth",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-15",
+      "description": "Static files sirven",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-16",
+      "description": "Browser headless funcional",
+      "status": "passed"
+    },
+    {
+      "id": "E2E-17",
+      "description": "Dashboard con sesion",
+      "status": "passed",
+      "detail": "Autenticado: dashboard carga contenido"
+    },
+    {
+      "id": "E2E-18",
+      "description": "Catalogos con sesion admin",
+      "status": "passed",
+      "detail": "Autenticado: /catalogs accesible"
+    },
+    {
+      "id": "E2E-19",
+      "description": "History con sesion",
+      "status": "passed",
+      "detail": "Autenticado: /history accesible"
+    },
+    {
+      "id": "E2E-20",
+      "description": "API me retorna datos",
+      "status": "passed",
+      "detail": "Autenticado: JSON con username y role"
+    },
+    {
+      "id": "E2E-21",
+      "description": "Dashboard status con sesion",
+      "status": "passed",
+      "detail": "Autenticado: /dashboard/status funciona"
+    },
+    {
+      "id": "E2E-22",
+      "description": "Catalogos tiene contenido",
+      "status": "passed",
+      "detail": "Autenticado: pagina con datos"
+    },
+    {
+      "id": "E2E-23",
+      "description": "History search con sesion",
+      "status": "passed",
+      "detail": "Autenticado: ?q=test funciona"
+    },
+    {
+      "id": "E2E-24",
+      "description": "Categories con sesion",
+      "status": "passed",
+      "detail": "Autenticado: endpoint responde 200"
+    },
+    {
+      "id": "E2E-25",
+      "description": "Dashboard estructura esperada",
+      "status": "passed",
+      "detail": "Autenticado: contenido HTML correcto"
+    }
+  ],
+  "artifacts_generated": [
+    {
+      "path": "tests/e2e/__init__.py",
+      "type": "source"
+    },
+    {
+      "path": "tests/e2e/conftest.py",
+      "type": "source",
+      "description": "Fixtures: live_server, e2e_user, auth_cookie, authenticated_page"
+    },
+    {
+      "path": "tests/e2e/test_login.py",
+      "type": "source",
+      "description": "4 tests de login publicos"
+    },
+    {
+      "path": "tests/e2e/test_dashboard.py",
+      "type": "source",
+      "description": "5 tests de dashboard publicos"
+    },
+    {
+      "path": "tests/e2e/test_expense_review.py",
+      "type": "source",
+      "description": "3 tests de expense publicos"
+    },
+    {
+      "path": "tests/e2e/test_catalogs.py",
+      "type": "source",
+      "description": "2 tests de catalogos publicos"
+    },
+    {
+      "path": "tests/e2e/test_history.py",
+      "type": "source",
+      "description": "2 tests de historial publicos"
+    },
+    {
+      "path": "tests/e2e/test_authenticated.py",
+      "type": "source",
+      "description": "9 tests autenticados"
+    },
+    {
+      "path": "harness/evidence/fase5/pruebas-e2e.json",
+      "type": "report"
+    },
+    {
+      "path": "harness/evidence/fase5/pruebas-e2e.md",
+      "type": "report"
+    }
+  ],
+  "errors": [],
+  "warnings": [],
+  "next_steps": [
+    "Agregar tests de HTMX polling con wait_for",
+    "Agregar tests de envio a Sheets",
+    "Pruebas con usuario standard (Esme) para verificar restriccion de permisos"
+  ]
+}

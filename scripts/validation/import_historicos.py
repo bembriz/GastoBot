@@ -7,23 +7,35 @@ Requiere:
   - GASTOSIA_GOOGLE_SPREADSHEET_ID
 """
 
-import os
-import sys
-import json
-import hashlib
 import argparse
 import csv
-from pathlib import Path
-from datetime import datetime, timezone
+import hashlib
+import json
+import os
+import sys
 from collections import defaultdict
+from datetime import UTC, datetime
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 CONTROL_HEADERS = [
-    "record_id", "image_hash", "owner", "group_code", "consecutive",
-    "final_description", "expense_date", "amount", "bank",
-    "transaction_type", "sheet_name", "sheet_row", "status",
-    "source_filename", "created_at", "updated_at",
+    "record_id",
+    "image_hash",
+    "owner",
+    "group_code",
+    "consecutive",
+    "final_description",
+    "expense_date",
+    "amount",
+    "bank",
+    "transaction_type",
+    "sheet_name",
+    "sheet_row",
+    "status",
+    "source_filename",
+    "created_at",
+    "updated_at",
 ]
 
 
@@ -52,7 +64,9 @@ def normalize_row(row: dict, index: int, owner: str = "Ruben") -> dict | None:
     """Normalizar una fila de historicos al formato _Control."""
     expense_date = row.get("expense_date") or row.get("fecha") or row.get("date") or ""
     amount = row.get("amount") or row.get("total") or row.get("monto") or "0"
-    description = row.get("final_description") or row.get("descripcion") or row.get("concepto") or ""
+    description = (
+        row.get("final_description") or row.get("descripcion") or row.get("concepto") or ""
+    )
     group = row.get("group_code") or row.get("grupo") or "HIST"
     consecutive = row.get("consecutive") or row.get("consecutivo") or str(index + 1)
 
@@ -76,13 +90,17 @@ def normalize_row(row: dict, index: int, owner: str = "Ruben") -> dict | None:
         "expense_date": str(expense_date).strip(),
         "amount": amount_f,
         "bank": str(row.get("bank") or row.get("banco") or "").strip().upper(),
-        "transaction_type": str(row.get("transaction_type") or row.get("tipo") or "Transferencia").strip(),
+        "transaction_type": str(
+            row.get("transaction_type") or row.get("tipo") or "Transferencia"
+        ).strip(),
         "sheet_name": str(row.get("sheet_name") or row.get("pestaña") or "Historico").strip(),
         "sheet_row": str(row.get("sheet_row") or row.get("fila") or "").strip(),
         "status": "IMPORTADO",
-        "source_filename": str(row.get("source_filename") or row.get("archivo") or "historico.csv").strip(),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "source_filename": str(
+            row.get("source_filename") or row.get("archivo") or "historico.csv"
+        ).strip(),
+        "created_at": datetime.now(UTC).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -96,7 +114,7 @@ def detect_duplicates(records: list[dict]) -> tuple[list[dict], list[dict], list
 
     for rec in records:
         h = rec["image_hash"]
-        gk = (rec["group_code"], rec["consecutive"])
+        (rec["group_code"], rec["consecutive"])
 
         if h in seen_hashes:
             dup_hash.append(rec)
@@ -137,14 +155,20 @@ def main() -> int:
 
     if not args.file:
         print("[INFO] No se especifico archivo de historicos (--file)")
-        print("[INFO] Para importar: python scripts/validation/import_historicos.py --file datos.csv")
+        print(
+            "[INFO] Para importar: python scripts/validation/import_historicos.py --file datos.csv"
+        )
         print("[INFO] Continuando sin importacion — se parte de cero")
 
         # Generar evidencia de "sin historicos"
-        output_path = Path(args.output) if args.output else PROJECT_ROOT / "harness" / "evidence" / "fase0" / "importacion-historicos.json"
+        output_path = (
+            Path(args.output)
+            if args.output
+            else PROJECT_ROOT / "harness" / "evidence" / "fase0" / "importacion-historicos.json"
+        )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         data = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "status": "sin_historicos",
             "message": "No se proporciono archivo de historicos. Los consecutivos iniciaran en 1.",
             "records_imported": 0,
@@ -168,7 +192,7 @@ def main() -> int:
         return 1
     print(f"[OK]   {len(raw_rows)} registros leidos")
 
-    print(f"\n[2/5] Normalizando registros...")
+    print("\n[2/5] Normalizando registros...")
     records = []
     skipped = 0
     for i, row in enumerate(raw_rows):
@@ -179,11 +203,13 @@ def main() -> int:
             skipped += 1
     print(f"[OK]   {len(records)} normalizados, {skipped} omitidos (sin fecha)")
 
-    print(f"\n[3/5] Detectando duplicados...")
+    print("\n[3/5] Detectando duplicados...")
     clean, dup_hash, dup_group = detect_duplicates(records)
-    print(f"[OK]   {len(clean)} limpios, {len(dup_hash)} dup. por hash, {len(dup_group)} dup. por grupo+consecutivo")
+    print(
+        f"[OK]   {len(clean)} limpios, {len(dup_hash)} dup. por hash, {len(dup_group)} dup. por grupo+consecutivo"
+    )
 
-    print(f"\n[4/5] Calculando consecutivos...")
+    print("\n[4/5] Calculando consecutivos...")
     max_cons = compute_max_consecutives(clean)
     for group, next_val in sorted(max_cons.items()):
         print(f"  {group}: proximo consecutivo = {next_val}")
@@ -199,6 +225,7 @@ def main() -> int:
         else:
             try:
                 import gspread
+
                 gc = gspread.service_account(filename=creds_path)
                 sh = gc.open_by_key(sheet_id)
                 ws_control = sh.worksheet("_Control")
@@ -213,10 +240,14 @@ def main() -> int:
                 return 1
 
     # Guardar resultados
-    output_path = Path(args.output) if args.output else PROJECT_ROOT / "harness" / "evidence" / "fase0" / "importacion-historicos.json"
+    output_path = (
+        Path(args.output)
+        if args.output
+        else PROJECT_ROOT / "harness" / "evidence" / "fase0" / "importacion-historicos.json"
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     data = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "status": "completado",
         "file": str(filepath),
         "raw_rows": len(raw_rows),

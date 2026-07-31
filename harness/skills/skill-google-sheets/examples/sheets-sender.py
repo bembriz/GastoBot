@@ -2,34 +2,34 @@
 # Archivo: app/sheets/sender.py
 
 from datetime import datetime
-from typing import Optional
-from app.sheets.client import GoogleSheetsClient
-from app.sheets.control import ControlSheetManager
-from app.sheets.tabs import TabManager
-from app.sheets.consecutive import ConsecutiveManager
-from app.sheets.sync import CatalogSync
-from app.sheets.errors import SheetsConnectionError
-from app.database.models import ExpenseRecord, AuditEvent, User
-from app.database.session import get_session
 
+from app.sheets.consecutive import ConsecutiveManager
+from app.sheets.control import ControlSheetManager
+from app.sheets.errors import SheetsConnectionError
+from app.sheets.sync import CatalogSync
+
+from app.database.models import AuditEvent, ExpenseRecord, User
+from app.database.session import get_session
+from app.sheets.client import GoogleSheetsClient
+from app.sheets.tabs import TabManager
 
 MONTHLY_COLUMNS = [
-    "transaction_date",    # A: Fecha del gasto
-    "category",            # B: Categoría
-    "final_description",   # C: Descripción
-    "empleado",            # D: Empleado
-    "pagado_por",          # E: Pagado por
-    "actividades",         # F: Actividades
-    "fecha_contable",      # G: Fecha contable
-    "cuenta",              # H: Cuenta
-    "unit_price",          # I: Precio unitario
-    "cantidad",            # J: Cantidad
-    "incluir_impuestos",   # K: Incluir impuestos
-    "importe_impuestos",   # L: Importe de impuestos
-    "total",               # M: Total
-    "estado",              # N: Estado
-    "bank",                # O: Banco
-    "transaction_type",    # P: Transaccion
+    "transaction_date",  # A: Fecha del gasto
+    "category",  # B: Categoría
+    "final_description",  # C: Descripción
+    "empleado",  # D: Empleado
+    "pagado_por",  # E: Pagado por
+    "actividades",  # F: Actividades
+    "fecha_contable",  # G: Fecha contable
+    "cuenta",  # H: Cuenta
+    "unit_price",  # I: Precio unitario
+    "cantidad",  # J: Cantidad
+    "incluir_impuestos",  # K: Incluir impuestos
+    "importe_impuestos",  # L: Importe de impuestos
+    "total",  # M: Total
+    "estado",  # N: Estado
+    "bank",  # O: Banco
+    "transaction_type",  # P: Transaccion
 ]
 
 
@@ -43,9 +43,7 @@ class ExpenseSender:
         self.consecutive = ConsecutiveManager(self.client)
         self.sync = CatalogSync(self.client)
 
-    async def send_expense(
-        self, record: ExpenseRecord, current_user: User
-    ) -> dict:
+    async def send_expense(self, record: ExpenseRecord, current_user: User) -> dict:
         """
         Execute the full 11-step send flow.
         Returns {"success": bool, "message": str, "sheet_row": int | None}
@@ -72,9 +70,7 @@ class ExpenseSender:
 
             # Step 5: Recalculate consecutive
             if record.group_code:
-                next_num = await self.consecutive.assign_next(
-                    record.group_code, record.session
-                )
+                next_num = await self.consecutive.assign_next(record.group_code, record.session)
                 record.consecutive = next_num
                 record.final_description = self._build_final_description(record)
 
@@ -93,30 +89,37 @@ class ExpenseSender:
             await self.client.write_range(range_name, [row_data])
 
             # Step 10: Update _Control
-            await self.control.add_control_entry({
-                "record_id": record.id,
-                "image_hash": record.image_hash,
-                "owner": record.owner,
-                "group_code": record.group_code,
-                "consecutive": record.consecutive,
-                "final_description": record.final_description,
-                "expense_date": str(record.transaction_date),
-                "amount": float(record.amount) if record.amount else 0,
-                "bank": record.bank or "",
-                "transaction_type": record.transaction_type or "",
-                "sheet_name": sheet_name,
-                "sheet_row": next_row,
-                "status": "ENVIADO",
-                "source_filename": record.source_filename or "",
-                "created_at": datetime.utcnow().isoformat(),
-                "updated_at": datetime.utcnow().isoformat(),
-            })
+            await self.control.add_control_entry(
+                {
+                    "record_id": record.id,
+                    "image_hash": record.image_hash,
+                    "owner": record.owner,
+                    "group_code": record.group_code,
+                    "consecutive": record.consecutive,
+                    "final_description": record.final_description,
+                    "expense_date": str(record.transaction_date),
+                    "amount": float(record.amount) if record.amount else 0,
+                    "bank": record.bank or "",
+                    "transaction_type": record.transaction_type or "",
+                    "sheet_name": sheet_name,
+                    "sheet_row": next_row,
+                    "status": "ENVIADO",
+                    "source_filename": record.source_filename or "",
+                    "created_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+            )
 
             # Step 11: Log audit event
-            await self._log_audit(record, current_user, "SENT", {
-                "sheet_name": sheet_name,
-                "sheet_row": next_row,
-            })
+            await self._log_audit(
+                record,
+                current_user,
+                "SENT",
+                {
+                    "sheet_name": sheet_name,
+                    "sheet_row": next_row,
+                },
+            )
 
             # Mark as sent
             record.status = "ENVIADO"
@@ -134,30 +137,35 @@ class ExpenseSender:
             return {"success": False, "message": "Sin conexión a Internet"}
         except Exception as e:
             await self._set_status(record, "ERROR_SHEETS")
-            await self._log_audit(record, current_user, "SEND_ERROR", {
-                "error": str(e),
-            })
+            await self._log_audit(
+                record,
+                current_user,
+                "SEND_ERROR",
+                {
+                    "error": str(e),
+                },
+            )
             return {"success": False, "message": f"Error: {str(e)}"}
 
     def _build_row_data(self, record: ExpenseRecord) -> list:
         """Build 16-column row matching PRD Section 13.1 order."""
         return [
-            str(record.transaction_date) if record.transaction_date else "",   # A
-            record.category_code or "",                                        # B
-            record.final_description or "",                                    # C
-            "RUBEN BENJAMIN VAZQUEZ EMBRIZ",                                   # D
-            "Empresa",                                                         # E
-            "",                                                                 # F
-            "",                                                                 # G
-            record.account_code or "",                                         # H
-            float(record.unit_price) if record.unit_price else "",             # I
-            1,                                                                  # J
-            "",                                                                 # K
-            "",                                                                 # L
-            float(record.total) if record.total else "",                       # M
-            "Por reportar",                                                    # N
-            record.bank or "",                                                  # O
-            record.transaction_type or "",                                     # P
+            str(record.transaction_date) if record.transaction_date else "",  # A
+            record.category_code or "",  # B
+            record.final_description or "",  # C
+            "RUBEN BENJAMIN VAZQUEZ EMBRIZ",  # D
+            "Empresa",  # E
+            "",  # F
+            "",  # G
+            record.account_code or "",  # H
+            float(record.unit_price) if record.unit_price else "",  # I
+            1,  # J
+            "",  # K
+            "",  # L
+            float(record.total) if record.total else "",  # M
+            "Por reportar",  # N
+            record.bank or "",  # O
+            record.transaction_type or "",  # P
         ]
 
     def _build_final_description(self, record: ExpenseRecord) -> str:
@@ -172,9 +180,7 @@ class ExpenseSender:
         record.status = status
         record.updated_at = datetime.utcnow()
 
-    async def _log_audit(
-        self, record: ExpenseRecord, user: User, action: str, details: dict
-    ):
+    async def _log_audit(self, record: ExpenseRecord, user: User, action: str, details: dict):
         async with get_session() as session:
             audit = AuditEvent(
                 expense_record_id=record.id,

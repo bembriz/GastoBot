@@ -9,11 +9,10 @@ import asyncio
 import hashlib
 import os
 import time
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image as PILImage
+from PIL import ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,12 +58,12 @@ def is_file_stable(path: Path) -> bool:
 
 def optimize_image(source: Path, dest: Path) -> tuple[int, int] | None:
     try:
-        img = Image.open(source)
+        img: PILImage.Image = PILImage.open(source)
         img = ImageOps.exif_transpose(img)
         w, h = img.size
         if max(w, h) > MAX_IMAGE_DIMENSION:
             ratio = MAX_IMAGE_DIMENSION / max(w, h)
-            img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+            img = img.resize((int(w * ratio), int(h * ratio)), PILImage.Resampling.LANCZOS)
         img.save(dest, format="JPEG", quality=85, optimize=True)
         return img.size
     except (UnidentifiedImageError, OSError):
@@ -99,10 +98,10 @@ async def scan_directory(owner: str, folder: str, db: AsyncSession) -> int:
             select(ImageFile).where(ImageFile.sha256_hash == file_hash)
         )
         if existing_hash.scalar_one_or_none():
-            record = await db.execute(
+            record_result = await db.execute(
                 select(ExpenseRecord).join(ImageFile).where(ImageFile.sha256_hash == file_hash)
             )
-            rec = record.scalar_one_or_none()
+            rec = record_result.scalar_one_or_none()
             if rec and rec.status == "DETECTADO":
                 rec.status = "DUPLICADO_EXACTO"
                 await db.commit()

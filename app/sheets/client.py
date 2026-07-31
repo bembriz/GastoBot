@@ -5,13 +5,12 @@ import time
 from pathlib import Path
 
 import gspread
-from gspread.exceptions import APIError, SpreadsheetNotFound
 
 CREDENTIALS_PATH = os.environ["GASTOSIA_GOOGLE_CREDENTIALS_PATH"]
 SPREADSHEET_ID = os.environ["GASTOSIA_GOOGLE_SPREADSHEET_ID"]
 
 _client: gspread.Client | None = None
-_spreadsheet = None
+_spreadsheet: gspread.Spreadsheet | None = None
 _last_connectivity_check = 0.0
 _is_online = True
 
@@ -25,7 +24,7 @@ def _get_client() -> gspread.Client:
     return _client
 
 
-def get_spreadsheet():
+def get_spreadsheet() -> gspread.Spreadsheet:
     global _spreadsheet
     if _spreadsheet is None:
         gc = _get_client()
@@ -40,7 +39,7 @@ def verify_connectivity() -> bool:
         return _is_online
     _last_connectivity_check = now
     try:
-        get_spreadsheet().title
+        _ = get_spreadsheet().title
         _is_online = True
         return True
     except Exception:

@@ -5,6 +5,7 @@ el mismo consecutivo para el mismo grupo simultaneamente.
 """
 
 import hashlib
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 

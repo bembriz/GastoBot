@@ -1,0 +1,52 @@
+{
+  "skill_name": "skill-fase5-aceptacion",
+  "phase": "fase5",
+  "timestamp": "2026-07-30T23:45:00-06:00",
+  "status": "passed",
+  "summary": "Prueba FIFO real ejecutada en VM (192.168.100.75). 3 imagenes copiadas simultaneamente a pendientes/. Monitor detecto en <10s. Enqueued en orden (23:42:35.343/.504/.516). Claimed secuencialmente (.698/.914/.391). Solo 1 ANALIZANDO a la vez. Orden FIFO preservado. Test restart: 110 registros + 9 items queue preservados tras systemctl restart.",
+  "metrics": {
+    "images_copied": 3,
+    "detected_in_seconds": 10,
+    "enqueued_order": "sequential",
+    "claimed_order": "sequential",
+    "concurrent_processing": 1,
+    "records_preserved_restart": 110
+  },
+  "checks": [
+    {
+      "id": "FIFO-VM-01",
+      "status": "passed",
+      "detail": "3 imagenes copiadas a /mnt/smb/Ruben/pendientes/"
+    },
+    {
+      "id": "FIFO-VM-02",
+      "status": "passed",
+      "detail": "Monitor detecto todas en <10s"
+    },
+    {
+      "id": "FIFO-VM-03",
+      "status": "passed",
+      "detail": "Enqueued_at: OP1=.343, OP2=.504, PSAV=.516"
+    },
+    {
+      "id": "FIFO-VM-04",
+      "status": "passed",
+      "detail": "Claimed: .698 -> .914 -> .391 (1 at a time)"
+    },
+    {
+      "id": "FIFO-VM-05",
+      "status": "passed",
+      "detail": "FIFO order: enqueued order = claimed order"
+    },
+    {
+      "id": "FIFO-VM-06",
+      "status": "passed",
+      "detail": "systemctl restart: 110 records + 9 queue preserved"
+    },
+    {
+      "id": "FIFO-VM-07",
+      "status": "passed",
+      "detail": "HTTPS 200 OK despues de restart"
+    }
+  ]
+}

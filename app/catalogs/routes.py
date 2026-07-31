@@ -2,12 +2,14 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import Response
 
-from app.auth.permissions import get_current_user, require_admin, session_cookie_name, verify_session
+from app.auth.permissions import require_admin
+from app.auth.session import session_cookie_name, verify_session
 from app.database.models import CatalogCache, User
 from app.database.session import get_db
 from app.templates import render
@@ -27,7 +29,7 @@ async def get_user_req(request: Request, db: AsyncSession) -> User | None:
 
 
 @router.get("", response_class=HTMLResponse)
-async def catalogs_page(request: Request, db: AsyncSession = Depends(get_db)):
+async def catalogs_page(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
     user = await get_user_req(request, db)
     if not user:
         return RedirectResponse("/login")
@@ -35,14 +37,24 @@ async def catalogs_page(request: Request, db: AsyncSession = Depends(get_db)):
         return HTMLResponse("<h2>Acceso restringido</h2>", status_code=403)
 
     cats = await db.execute(
-        select(CatalogCache).where(CatalogCache.catalog_type == "categoria").order_by(CatalogCache.code)
+        select(CatalogCache)
+        .where(CatalogCache.catalog_type == "categoria")
+        .order_by(CatalogCache.code)
     )
     accs = await db.execute(
-        select(CatalogCache).where(CatalogCache.catalog_type == "cuenta").order_by(CatalogCache.code)
+        select(CatalogCache)
+        .where(CatalogCache.catalog_type == "cuenta")
+        .order_by(CatalogCache.code)
     )
-    return HTMLResponse(render("catalogs.html",
-        request=request, user=user,
-        categories=cats.scalars().all(), accounts=accs.scalars().all()))
+    return HTMLResponse(
+        render(
+            "catalogs.html",
+            request=request,
+            user=user,
+            categories=cats.scalars().all(),
+            accounts=accs.scalars().all(),
+        )
+    )
 
 
 @router.post("/categoria")
@@ -51,8 +63,10 @@ async def create_category(
     description: str = Form(...),
     user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
-):
-    cat = CatalogCache(id=uuid.uuid4(), catalog_type="categoria", code=code.upper(), description=description)
+) -> HTMLResponse:
+    cat = CatalogCache(
+        id=uuid.uuid4(), catalog_type="categoria", code=code.upper(), description=description
+    )
     db.add(cat)
     await db.commit()
     return HTMLResponse("OK")
@@ -63,7 +77,7 @@ async def toggle_category(
     cat_id: str,
     user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
-):
+) -> HTMLResponse:
     result = await db.execute(select(CatalogCache).where(CatalogCache.id == cat_id))
     cat = result.scalar_one_or_none()
     if cat:
@@ -78,7 +92,7 @@ async def create_account(
     description: str = Form(...),
     user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
-):
+) -> HTMLResponse:
     acc = CatalogCache(id=uuid.uuid4(), catalog_type="cuenta", code=code, description=description)
     db.add(acc)
     await db.commit()
@@ -90,7 +104,7 @@ async def toggle_account(
     acc_id: str,
     user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
-):
+) -> HTMLResponse:
     result = await db.execute(select(CatalogCache).where(CatalogCache.id == acc_id))
     acc = result.scalar_one_or_none()
     if acc:

@@ -10,13 +10,12 @@ import asyncio
 import os
 import sys
 
-from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
-from app.database.engine import engine
-from app.database.session import async_session
 from app.auth.password import hash_password
+from app.database.engine import engine
 from app.database.models import User
+from app.database.session import async_session
 
 MIN_PASSWORD_LENGTH = 8
 

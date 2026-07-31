@@ -1,10 +1,7 @@
-import time
 import uuid
 from unittest.mock import patch
 
-import pytest
 from app.auth.session import (
-    MAX_AGE_SECONDS,
     create_session,
     delete_session,
     session_cookie_name,

@@ -31,21 +31,24 @@ Requisitos del PRD §10.1, §4:
    from argon2.exceptions import VerifyMismatchError
 
    ph = PasswordHasher(
-       time_cost=3,        # 3 iteraciones (default)
+       time_cost=3,  # 3 iteraciones (default)
        memory_cost=65536,  # 64 MB
-       parallelism=4,      # 4 hilos
-       hash_len=32,        # 32 bytes de hash
-       salt_len=16,        # 16 bytes de salt
+       parallelism=4,  # 4 hilos
+       hash_len=32,  # 32 bytes de hash
+       salt_len=16,  # 16 bytes de salt
    )
+
 
    def hash_password(password: str) -> str:
        return ph.hash(password)
+
 
    def verify_password(password: str, password_hash: str) -> bool:
        try:
            return ph.verify(password_hash, password)
        except VerifyMismatchError:
            return False
+
 
    def needs_rehash(password_hash: str) -> bool:
        return ph.check_needs_rehash(password_hash)

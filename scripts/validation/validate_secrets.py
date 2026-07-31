@@ -4,7 +4,6 @@ Ejecutar: GASTOSIA_TEST=1 python scripts/validation/validate_secrets.py"""
 
 import os
 import sys
-import json
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -29,6 +28,7 @@ REQUIRED_VARS = [
 
 OPTIONAL_VARS: list[str] = []
 
+
 def load_env_example() -> dict[str, str]:
     """Parsear .env.example y devolver diccionario clave -> valor (sin secretos)."""
     if not ENV_EXAMPLE.exists():
@@ -43,6 +43,7 @@ def load_env_example() -> dict[str, str]:
             result[key.strip()] = value.strip()
     return result
 
+
 def mask(value: str) -> str:
     """Enmascarar valor sensible para output seguro."""
     if not value:
@@ -50,6 +51,7 @@ def mask(value: str) -> str:
     if len(value) <= 4:
         return "***"
     return value[:2] + "***" + value[-2:]
+
 
 def main() -> int:
     results: list[dict] = []
@@ -65,18 +67,30 @@ def main() -> int:
     env_vars = load_env_example()
     if not env_vars:
         print("[FAIL] .env.example no existe o está vacío")
-        results.append({"check": ".env.example existe", "status": "failed", "detail": "archivo no encontrado"})
+        results.append(
+            {"check": ".env.example existe", "status": "failed", "detail": "archivo no encontrado"}
+        )
         failed += 1
     else:
         print(f"[OK]   .env.example encontrado con {len(env_vars)} variables")
-        results.append({"check": ".env.example existe", "status": "passed", "detail": f"{len(env_vars)} variables"})
+        results.append(
+            {
+                "check": ".env.example existe",
+                "status": "passed",
+                "detail": f"{len(env_vars)} variables",
+            }
+        )
         passed += 1
 
     # 2. Verificar variables requeridas en .env.example
     for var in REQUIRED_VARS:
         if var in env_vars:
             status = "passed"
-            detail = f"presente, valor: {mask(env_vars[var])}" if env_vars[var] else "presente, sin valor (ok)"
+            detail = (
+                f"presente, valor: {mask(env_vars[var])}"
+                if env_vars[var]
+                else "presente, sin valor (ok)"
+            )
             passed += 1
         else:
             status = "failed"
@@ -98,7 +112,13 @@ def main() -> int:
         warnings.append(f"{len(sensitive_patterns)} variables sospechosas en .env.example")
     else:
         print("[OK]   .env.example sin valores reales sospechosos")
-        results.append({"check": "sin valores reales", "status": "passed", "detail": "todas vacías o placeholder"})
+        results.append(
+            {
+                "check": "sin valores reales",
+                "status": "passed",
+                "detail": "todas vacías o placeholder",
+            }
+        )
         passed += 1
 
     # 4. Verificar os.environ.get() funciona
@@ -106,11 +126,15 @@ def main() -> int:
     test_val = os.environ.get("GASTOSIA_TEST_VAR")
     if test_val == "test_value_12345":
         print("[OK]   os.environ.get() funciona correctamente")
-        results.append({"check": "os.environ.get()", "status": "passed", "detail": "lectura correcta"})
+        results.append(
+            {"check": "os.environ.get()", "status": "passed", "detail": "lectura correcta"}
+        )
         passed += 1
     else:
         print(f"[FAIL] os.environ.get() devolvió: {test_val}")
-        results.append({"check": "os.environ.get()", "status": "failed", "detail": "error de lectura"})
+        results.append(
+            {"check": "os.environ.get()", "status": "failed", "detail": "error de lectura"}
+        )
         failed += 1
     del os.environ["GASTOSIA_TEST_VAR"]
 
@@ -119,25 +143,51 @@ def main() -> int:
     if test_secret:
         if len(test_secret) >= 32:
             print(f"[OK]   GASTOSIA_SESSION_SECRET longitud suficiente: {len(test_secret)} chars")
-            results.append({"check": "SESSION_SECRET length", "status": "passed", "detail": f"{len(test_secret)} chars"})
+            results.append(
+                {
+                    "check": "SESSION_SECRET length",
+                    "status": "passed",
+                    "detail": f"{len(test_secret)} chars",
+                }
+            )
             passed += 1
         else:
             print(f"[FAIL] GASTOSIA_SESSION_SECRET muy corto: {len(test_secret)} < 32")
-            results.append({"check": "SESSION_SECRET length", "status": "failed", "detail": f"{len(test_secret)} < 32"})
+            results.append(
+                {
+                    "check": "SESSION_SECRET length",
+                    "status": "failed",
+                    "detail": f"{len(test_secret)} < 32",
+                }
+            )
             failed += 1
     else:
         print("[INFO] GASTOSIA_SESSION_SECRET no definido — validacion omitida")
-        results.append({"check": "SESSION_SECRET length", "status": "skipped", "detail": "no definida en entorno"})
+        results.append(
+            {
+                "check": "SESSION_SECRET length",
+                "status": "skipped",
+                "detail": "no definida en entorno",
+            }
+        )
 
     # 6. Verificar fail-safe: falta variable obligatoria
     missing = [v for v in REQUIRED_VARS if v not in env_vars]
     if missing:
         print(f"[FAIL] Faltan {len(missing)} variables obligatorias en .env.example")
-        results.append({"check": "variables obligatorias completas", "status": "failed", "detail": f"faltan: {', '.join(missing)}"})
+        results.append(
+            {
+                "check": "variables obligatorias completas",
+                "status": "failed",
+                "detail": f"faltan: {', '.join(missing)}",
+            }
+        )
         failed += 1
     else:
         print("[OK]   Todas las variables obligatorias documentadas")
-        results.append({"check": "variables obligatorias completas", "status": "passed", "detail": "14/14"})
+        results.append(
+            {"check": "variables obligatorias completas", "status": "passed", "detail": "14/14"}
+        )
         passed += 1
 
     # 7. Verificar enmascaramiento en output
@@ -145,11 +195,15 @@ def main() -> int:
     masked = mask(sensitive_value)
     if "super_secret" not in masked:
         print(f"[OK]   Enmascaramiento funciona: '{masked}'")
-        results.append({"check": "enmascaramiento", "status": "passed", "detail": "valores sensibles ocultos"})
+        results.append(
+            {"check": "enmascaramiento", "status": "passed", "detail": "valores sensibles ocultos"}
+        )
         passed += 1
     else:
         print(f"[FAIL] Enmascaramiento no funciona: '{masked}'")
-        results.append({"check": "enmascaramiento", "status": "failed", "detail": "secreto visible"})
+        results.append(
+            {"check": "enmascaramiento", "status": "failed", "detail": "secreto visible"}
+        )
         failed += 1
 
     # Summary

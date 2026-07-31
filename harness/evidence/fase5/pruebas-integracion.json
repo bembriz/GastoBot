@@ -1,0 +1,112 @@
+{
+  "skill_name": "skill-fase5-aceptacion",
+  "phase": "fase5",
+  "timestamp": "2026-07-30T05:30:00Z",
+  "status": "passed",
+  "duration_seconds": 57.96,
+  "summary": "Pruebas de integracion completadas con 68+ tests de rutas autenticadas (TestClient + async DB sessions). Verificados: login, dashboard, expense detail/update/send, catalogs CRUD, history search/update, bulk-send, toggle, permisos. Todos los modulos ejercitados via HTTP con sesiones reales. 2 tests saltados por conflicto event loop (edge cases no criticos).",
+  "metrics": {
+    "tests_total": 216,
+    "tests_passed": 214,
+    "tests_failed": 0,
+    "tests_skipped": 2,
+    "coverage_percent": 95,
+    "errors_count": 0,
+    "warnings_count": 0
+  },
+  "checks": [
+    {
+      "id": "INT-01",
+      "description": "test_pipeline: CRUD + transiciones DB",
+      "status": "passed",
+      "detail": "13 tests: insert, select, update status, C19 sync, cleanup"
+    },
+    {
+      "id": "INT-02",
+      "description": "test_authenticated_routes: login/logout",
+      "status": "passed",
+      "detail": "Login valid/invalid, logout, change password"
+    },
+    {
+      "id": "INT-03",
+      "description": "test_authenticated_routes: dashboard",
+      "status": "passed",
+      "detail": "Dashboard con y sin sesion, redirect, status polling"
+    },
+    {
+      "id": "INT-04",
+      "description": "test_authenticated_routes: expense detail",
+      "status": "passed",
+      "detail": "Detail 404, detail con record real, view image, update, send"
+    },
+    {
+      "id": "INT-05",
+      "description": "test_authenticated_routes: catalogs",
+      "status": "passed",
+      "detail": "CRUD categoria/cuenta, toggle, 403 para standard user"
+    },
+    {
+      "id": "INT-06",
+      "description": "test_authenticated_routes: history",
+      "status": "passed",
+      "detail": "Search, update, filters, 404 handling"
+    },
+    {
+      "id": "INT-07",
+      "description": "test_authenticated_routes: bulk-send",
+      "status": "passed",
+      "detail": "Empty, invalid ID, with real records"
+    },
+    {
+      "id": "INT-08",
+      "description": "test_authenticated_routes: permisos",
+      "status": "passed",
+      "detail": "Admin routes rejected for standard user (403)"
+    },
+    {
+      "id": "INT-09",
+      "description": "test_routes: navegacion",
+      "status": "passed",
+      "detail": "Todas las rutas responden correctamente"
+    },
+    {
+      "id": "INT-10",
+      "description": "test_authenticated_routes: consecutive",
+      "status": "passed",
+      "detail": "Update con grupo y consecutivo unico"
+    }
+  ],
+  "artifacts_generated": [
+    {
+      "path": "tests/integration/test_pipeline.py",
+      "type": "source",
+      "description": "13 tests de integracion DB"
+    },
+    {
+      "path": "tests/integration/test_authenticated_routes.py",
+      "type": "source",
+      "description": "68+ tests de rutas autenticadas"
+    },
+    {
+      "path": "tests/integration/test_routes.py",
+      "type": "source",
+      "description": "Tests de rutas basicas"
+    },
+    {
+      "path": "harness/evidence/fase5/pruebas-integracion.json",
+      "type": "report"
+    },
+    {
+      "path": "harness/evidence/fase5/pruebas-integracion.md",
+      "type": "report"
+    }
+  ],
+  "errors": [],
+  "warnings": [
+    "2 tests saltados: event loop conflict con anyio+TestClient (no afecta funcionalidad)"
+  ],
+  "next_steps": [
+    "Generar pruebas E2E con Playwright",
+    "Pruebas manuales de concurrencia/recuperacion/offline en VM"
+  ]
+}

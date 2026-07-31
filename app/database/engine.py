@@ -2,6 +2,7 @@
 
 import os
 from urllib.parse import quote_plus
+
 from sqlalchemy.ext.asyncio import create_async_engine
 
 DATABASE_HOST = os.environ["GASTOSIA_DATABASE_HOST"]

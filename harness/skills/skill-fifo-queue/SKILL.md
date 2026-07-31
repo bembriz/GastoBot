@@ -111,9 +111,10 @@ Crear `app/queue/lock.py`:
 1. Usar lock file en `/tmp/gastosia-worker.lock`:
    ```python
    import fcntl
-   
+
+
    def acquire_worker_lock() -> bool:
-       lock_file = open('/tmp/gastosia-worker.lock', 'w')
+       lock_file = open("/tmp/gastosia-worker.lock", "w")
        try:
            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
            return True
@@ -133,23 +134,16 @@ Crear funcion `recover_stale_jobs()` que se ejecuta al inicio del worker:
 async def recover_stale_jobs(db: AsyncSession, timeout_minutes: int = 30):
     """
     Recupera trabajos que quedaron en ANALIZANDO tras un reinicio.
-    
+
     Si un trabajo lleva > timeout_minutes en ANALIZANDO sin worker activo,
     asumir que el worker anterior murio y devolverlo a EN_COLA.
     """
     stale_threshold = datetime.utcnow() - timedelta(minutes=timeout_minutes)
-    
+
     stale_jobs = await db.execute(
         update(ProcessingQueue)
-        .where(
-            ProcessingQueue.status == 'ANALIZANDO',
-            ProcessingQueue.claimed_at < stale_threshold
-        )
-        .values(
-            status='EN_COLA',
-            claimed_at=None,
-            worker_id=None
-        )
+        .where(ProcessingQueue.status == "ANALIZANDO", ProcessingQueue.claimed_at < stale_threshold)
+        .values(status="EN_COLA", claimed_at=None, worker_id=None)
     )
     await db.commit()
     return stale_jobs.rowcount

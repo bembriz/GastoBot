@@ -1,7 +1,8 @@
 """Modelos SQLAlchemy para Gastos IA — 9 tablas del PRD 18."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -35,7 +36,7 @@ class Base(DeclarativeBase):
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class User(Base):
@@ -53,36 +54,44 @@ class User(Base):
     password_change_required: Mapped[bool] = mapped_column(Boolean, default=True)
 
     expense_records: Mapped[list["ExpenseRecord"]] = relationship(back_populates="owner")
-    audit_events: Mapped[list["AuditEvent"]] = relationship(back_populates="actor", foreign_keys="AuditEvent.actor_id")
-
-    __table_args__ = (
-        CheckConstraint("role IN ('admin', 'standard')", name="ck_users_role"),
+    audit_events: Mapped[list["AuditEvent"]] = relationship(
+        back_populates="actor", foreign_keys="AuditEvent.actor_id"
     )
+
+    __table_args__ = (CheckConstraint("role IN ('admin', 'standard')", name="ck_users_role"),)
 
 
 class ExpenseRecord(Base):
     __tablename__ = "expense_records"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
     image_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     transaction_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     ticket_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     bank: Mapped[str | None] = mapped_column(String(100), nullable=True)
     transaction_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    confidence_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    confidence_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     group_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     consecutive: Mapped[int | None] = mapped_column(Integer, nullable=True)
     final_description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    category_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("catalog_cache.id", ondelete="SET NULL"), nullable=True)
-    account_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("catalog_cache.id", ondelete="SET NULL"), nullable=True)
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("catalog_cache.id", ondelete="SET NULL"), nullable=True
+    )
+    account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("catalog_cache.id", ondelete="SET NULL"), nullable=True
+    )
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="DETECTADO", index=True)
     sheet_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     sheet_row: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     owner: Mapped["User"] = relationship(back_populates="expense_records")
@@ -103,8 +112,13 @@ class ExpenseRecord(Base):
             "transaction_type IS NULL OR transaction_type IN ('Transferencia', 'Credito')",
             name="ck_expense_records_transaction_type",
         ),
-        Index("ix_expense_records_group_consecutive", "group_code", "consecutive", unique=True,
-              postgresql_where=text("group_code IS NOT NULL AND consecutive IS NOT NULL")),
+        Index(
+            "ix_expense_records_group_consecutive",
+            "group_code",
+            "consecutive",
+            unique=True,
+            postgresql_where=text("group_code IS NOT NULL AND consecutive IS NOT NULL"),
+        ),
     )
 
 
@@ -112,7 +126,9 @@ class ImageFile(Base):
     __tablename__ = "image_files"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    record_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("expense_records.id", ondelete="RESTRICT"), unique=True, nullable=False)
+    record_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("expense_records.id", ondelete="RESTRICT"), unique=True, nullable=False
+    )
     original_path: Mapped[str] = mapped_column(String(1000), nullable=False)
     optimized_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     sha256_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
@@ -120,7 +136,7 @@ class ImageFile(Base):
     mime_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    exif_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    exif_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     owner_folder: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -135,11 +151,13 @@ class ExtractionRun(Base):
     __tablename__ = "extraction_runs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    record_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("expense_records.id", ondelete="RESTRICT"), nullable=False, index=True)
+    record_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("expense_records.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     model_name: Mapped[str] = mapped_column(String(50), nullable=False)
     prompt_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
     raw_response: Mapped[str | None] = mapped_column(Text, nullable=True)
-    parsed_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    parsed_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     is_valid_json: Mapped[bool] = mapped_column(Boolean, default=False)
     elapsed_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -152,8 +170,12 @@ class ProcessingQueue(Base):
     __tablename__ = "processing_queue"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    record_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("expense_records.id", ondelete="RESTRICT"), unique=True, nullable=False)
-    enqueued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    record_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("expense_records.id", ondelete="RESTRICT"), unique=True, nullable=False
+    )
+    enqueued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     worker_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -181,12 +203,18 @@ class CatalogCache(Base):
     code: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("catalog_cache.id", ondelete="SET NULL"), nullable=True)
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("catalog_cache.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    parent: Mapped["CatalogCache | None"] = relationship("CatalogCache", remote_side=[id], back_populates="children")
+    parent: Mapped["CatalogCache | None"] = relationship(
+        "CatalogCache", remote_side=[id], back_populates="children"
+    )
     children: Mapped[list["CatalogCache"]] = relationship("CatalogCache", back_populates="parent")
 
     __table_args__ = (
@@ -200,7 +228,9 @@ class SheetSync(Base):
     __tablename__ = "sheet_sync"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    record_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("expense_records.id", ondelete="RESTRICT"), unique=True, nullable=False)
+    record_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("expense_records.id", ondelete="RESTRICT"), unique=True, nullable=False
+    )
     sheet_name: Mapped[str] = mapped_column(String(100), nullable=False)
     sheet_row: Mapped[int] = mapped_column(Integer, nullable=False)
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -222,15 +252,23 @@ class AuditEvent(Base):
     __tablename__ = "audit_events"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
-    record_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("expense_records.id", ondelete="SET NULL"), nullable=True, index=True)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    record_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("expense_records.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    old_state: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    new_state: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    old_state: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    new_state: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
 
-    actor: Mapped["User | None"] = relationship(back_populates="audit_events", foreign_keys=[actor_id])
+    actor: Mapped["User | None"] = relationship(
+        back_populates="audit_events", foreign_keys=[actor_id]
+    )
 
 
 class SystemSetting(Base):
@@ -240,5 +278,9 @@ class SystemSetting(Base):
     key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-    updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )

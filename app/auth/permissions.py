@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.session import verify_session, session_cookie_name
+from app.auth.session import session_cookie_name, verify_session
 from app.database.models import User
 from app.database.session import get_db
 

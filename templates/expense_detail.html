@@ -23,6 +23,12 @@
             <h3 style="margin:0;">
                 Revisi&oacute;n
                 <span class="status status-{{ record.status }}">{{ record.status.replace('_', ' ') }}</span>
+            {% if record.status == 'ERROR_PROCESAMIENTO' and extraction_error %}
+            <div style="margin-top:12px;padding:12px;background:#fff3cd;border:1px solid #ffc107;border-radius:6px;font-size:13px;">
+                <strong>&#9888; Error de extraccion:</strong><br>
+                <code style="word-break:break-all;font-size:11px;">{{ extraction_error }}</code>
+            </div>
+            {% endif %}
             </h3>
             <a href="/dashboard" class="btn" style="background:var(--muted);color:#fff;">&larr; Regresar</a>
         </div>

@@ -28,20 +28,20 @@ Se usa Playwright para Python (`pytest-playwright`) contra una instancia real de
    import pytest
    from playwright.sync_api import Page, BrowserContext
 
+
    @pytest.fixture(scope="session")
    def browser_context(browser):
-       context = browser.new_context(
-           viewport={"width": 1280, "height": 720},
-           ignore_https_errors=True
-       )
+       context = browser.new_context(viewport={"width": 1280, "height": 720}, ignore_https_errors=True)
        yield context
        context.close()
+
 
    @pytest.fixture
    def page(browser_context):
        page = browser_context.new_page()
        yield page
        page.close()
+
 
    @pytest.fixture
    def login_ruben(page, base_url):
@@ -51,6 +51,7 @@ Se usa Playwright para Python (`pytest-playwright`) contra una instancia real de
        page.click("button[type='submit']")
        page.wait_for_url("**/expenses")
        return page
+
 
    @pytest.fixture
    def login_esme(page, base_url):

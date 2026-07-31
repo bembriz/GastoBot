@@ -1,13 +1,14 @@
 # Ejemplo: Ruta de catálogos con HTMX inline editing
 # Archivo: app/api/catalogs.py
 
-from fastapi import APIRouter, Request, Depends, HTTPException, Form
+from app.catalogs.repository import CategoryRepository
+from app.users.repository import UserRepository
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+
 from app.auth.session import get_current_user, require_admin
 from app.database.models import User
-from app.catalogs.repository import CategoryRepository, AccountRepository
-from app.users.repository import UserRepository
 
 router = APIRouter(prefix="/catalogs", tags=["catalogs"])
 templates = Jinja2Templates(directory="templates")
@@ -23,6 +24,7 @@ async def catalogs_page(request: Request, current_user: User = Depends(get_curre
 
 
 # ─── Categories ───────────────────────────────────────────────────────────
+
 
 @router.get("/categories", response_class=HTMLResponse)
 @require_admin
@@ -49,17 +51,24 @@ async def categories_create(
     if existing:
         return templates.TemplateResponse(
             "partials/catalogs/categories.html",
-            {"request": request, "current_user": current_user,
-             "categories": await repo.get_all_categories(include_inactive=True),
-             "error": f"El código '{code}' ya existe"},
+            {
+                "request": request,
+                "current_user": current_user,
+                "categories": await repo.get_all_categories(include_inactive=True),
+                "error": f"El código '{code}' ya existe",
+            },
             status_code=409,
         )
     await repo.create_category(code, description)
     categories = await repo.get_all_categories(include_inactive=True)
     response = templates.TemplateResponse(
         "partials/catalogs/categories.html",
-        {"request": request, "current_user": current_user, "categories": categories,
-         "success": f"Categoría '{code}' creada"},
+        {
+            "request": request,
+            "current_user": current_user,
+            "categories": categories,
+            "success": f"Categoría '{code}' creada",
+        },
     )
     response.headers["HX-Trigger"] = "catalog-updated"
     return response
@@ -79,8 +88,12 @@ async def categories_update(
     categories = await repo.get_all_categories(include_inactive=True)
     response = templates.TemplateResponse(
         "partials/catalogs/categories.html",
-        {"request": request, "current_user": current_user, "categories": categories,
-         "success": f"Categoría '{code}' actualizada"},
+        {
+            "request": request,
+            "current_user": current_user,
+            "categories": categories,
+            "success": f"Categoría '{code}' actualizada",
+        },
     )
     response.headers["HX-Trigger"] = "catalog-updated"
     return response
@@ -103,8 +116,12 @@ async def categories_deactivate(
         msg = "Categoría desactivada correctamente."
     response = templates.TemplateResponse(
         "partials/catalogs/categories.html",
-        {"request": request, "current_user": current_user, "categories": categories,
-         "warning": msg},
+        {
+            "request": request,
+            "current_user": current_user,
+            "categories": categories,
+            "warning": msg,
+        },
     )
     response.headers["HX-Trigger"] = "catalog-updated"
     return response
@@ -116,8 +133,7 @@ async def categories_active(request: Request):
     repo = CategoryRepository()
     categories = await repo.get_active_categories()
     options = "".join(
-        f'<option value="{c.id}">{c.code} - {c.description}</option>'
-        for c in categories
+        f'<option value="{c.id}">{c.code} - {c.description}</option>' for c in categories
     )
     return HTMLResponse(content=options)
 
@@ -132,6 +148,7 @@ async def categories_active(request: Request):
 
 
 # ─── Users ─────────────────────────────────────────────────────────────────
+
 
 @router.get("/users", response_class=HTMLResponse)
 @require_admin
@@ -154,14 +171,19 @@ async def users_create(
     current_user: User = Depends(get_current_user),
 ):
     from app.auth.service import AuthService
+
     repo = UserRepository()
     hashed = AuthService.hash_password(initial_password)
     await repo.create_user(username, hashed, role, must_change_password=True)
     users = await repo.get_all_users()
     response = templates.TemplateResponse(
         "partials/catalogs/users.html",
-        {"request": request, "current_user": current_user, "users": users,
-         "success": f"Usuario '{username}' creado"},
+        {
+            "request": request,
+            "current_user": current_user,
+            "users": users,
+            "success": f"Usuario '{username}' creado",
+        },
     )
     return response
 
@@ -175,14 +197,19 @@ async def users_reset_password(
     current_user: User = Depends(get_current_user),
 ):
     from app.auth.service import AuthService
+
     repo = UserRepository()
     hashed = AuthService.hash_password(new_password)
     await repo.update_user(user_id, password_hash=hashed, must_change_password=True)
     users = await repo.get_all_users()
     response = templates.TemplateResponse(
         "partials/catalogs/users.html",
-        {"request": request, "current_user": current_user, "users": users,
-         "success": "Contraseña restablecida. El usuario deberá cambiarla en su próximo inicio."},
+        {
+            "request": request,
+            "current_user": current_user,
+            "users": users,
+            "success": "Contraseña restablecida. El usuario deberá cambiarla en su próximo inicio.",
+        },
     )
     return response
 
@@ -199,6 +226,10 @@ async def users_unlock(
     users = await repo.get_all_users()
     return templates.TemplateResponse(
         "partials/catalogs/users.html",
-        {"request": request, "current_user": current_user, "users": users,
-         "success": "Usuario desbloqueado"},
+        {
+            "request": request,
+            "current_user": current_user,
+            "users": users,
+            "success": "Usuario desbloqueado",
+        },
     )

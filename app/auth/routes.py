@@ -1,10 +1,10 @@
 """Endpoints de autenticacion: login, logout, change-password."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,7 +45,7 @@ async def login(
     username: str = Form(...),
     password: str = Form(...),
     db: AsyncSession = Depends(get_db),
-):
+) -> HTMLResponse:
     result = await db.execute(select(User).where(User.username == username))
     user = result.scalar_one_or_none()
 
@@ -55,37 +55,44 @@ async def login(
             status_code=401,
         )
 
-    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
-        remaining = int((user.locked_until - datetime.now(timezone.utc)).total_seconds() / 60)
+    if user.locked_until and user.locked_until > datetime.now(UTC):
+        remaining = int((user.locked_until - datetime.now(UTC)).total_seconds() / 60)
         return HTMLResponse(
-            render("login.html", request=request, user=None,
-                   error=f"Cuenta bloqueada. Intente en {remaining} minutos"),
+            render(
+                "login.html",
+                request=request,
+                user=None,
+                error=f"Cuenta bloqueada. Intente en {remaining} minutos",
+            ),
             status_code=423,
         )
 
     if not verify_password(password, user.password_hash):
         user.failed_attempts += 1
         if user.failed_attempts >= MAX_FAILED_ATTEMPTS:
-            user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_MINUTES)
+            user.locked_until = datetime.now(UTC) + timedelta(minutes=LOCKOUT_MINUTES)
         await db.commit()
         remaining = max(0, MAX_FAILED_ATTEMPTS - user.failed_attempts)
         return HTMLResponse(
-            render("login.html", request=request, user=None,
-                   error=f"Credenciales invalidas. {remaining} intentos restantes"),
+            render(
+                "login.html",
+                request=request,
+                user=None,
+                error=f"Credenciales invalidas. {remaining} intentos restantes",
+            ),
             status_code=401,
         )
 
     user.failed_attempts = 0
     user.locked_until = None
-    user.last_login = datetime.now(timezone.utc)
+    user.last_login = datetime.now(UTC)
     await db.commit()
 
     token = create_session(user.id, user.username, user.role)
 
     if user.password_change_required:
         resp = HTMLResponse(
-            render("login.html", request=request, user=None,
-                   change_password=True),
+            render("login.html", request=request, user=None, change_password=True),
         )
         set_session_cookie(resp, token)
         return resp
@@ -96,16 +103,16 @@ async def login(
     return resp
 
 
+@router.get("/logout")
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(response: Response) -> RedirectResponse:
     response.delete_cookie(
         key=session_cookie_name(),
         path="/",
         httponly=True,
         samesite="lax",
     )
-    response.headers["HX-Redirect"] = "/login"
-    return HTMLResponse("")
+    return RedirectResponse("/login", status_code=302)
 
 
 @router.post("/change-password")
@@ -116,7 +123,7 @@ async def change_password(
     new_password: str = Form(...),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> HTMLResponse:
     if not verify_password(current_password, user.password_hash):
         return HTMLResponse('<span class="error">Contrasena actual incorrecta</span>')
 
@@ -132,7 +139,7 @@ async def change_password(
 
 
 @router.get("/api/me")
-async def get_me(user: User = Depends(get_current_user)):
+async def get_me(user: User = Depends(get_current_user)) -> dict[str, Any]:
     return {
         "id": str(user.id),
         "username": user.username,

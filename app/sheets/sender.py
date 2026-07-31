@@ -2,19 +2,24 @@
 
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.database.locking import get_next_consecutive
 from app.database.models import AuditEvent, CatalogCache, ExpenseRecord, SheetSync
 from app.database.session import async_session
 from app.sheets.client import get_spreadsheet, verify_connectivity
-from app.sheets.tabs import build_sheet_row, ensure_month_tab, find_next_empty_row, get_month_tab_name
+from app.sheets.tabs import (
+    build_sheet_row,
+    ensure_month_tab,
+    find_next_empty_row,
+    get_month_tab_name,
+)
 
 
-async def send_expense(record_id: str, group_code: str) -> dict:
+async def send_expense(record_id: str, group_code: str) -> dict[str, Any]:
     async with async_session() as db:
         result = await db.execute(select(ExpenseRecord).where(ExpenseRecord.id == record_id))
         record = result.scalar_one_or_none()
@@ -81,7 +86,7 @@ async def send_expense(record_id: str, group_code: str) -> dict:
             record.status = "ENVIADO"
             record.sheet_name = tab_name
             record.sheet_row = next_row
-            record.sent_at = datetime.now(timezone.utc)
+            record.sent_at = datetime.now(UTC)
 
             # Registrar en sheet_sync
             sync = SheetSync(
@@ -103,7 +108,7 @@ async def send_expense(record_id: str, group_code: str) -> dict:
                     "row": next_row,
                     "consecutive": record.consecutive,
                 },
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             db.add(audit)
             await db.commit()

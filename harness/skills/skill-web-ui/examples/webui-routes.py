@@ -1,13 +1,13 @@
 # Ejemplo: Ruta de vista para visor de gasto
 # Archivo: app/api/webui.py
 
-from fastapi import APIRouter, Request, Depends, HTTPException, Form
+from app.expenses.repository import ExpenseRepository
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+
 from app.auth.session import get_current_user, require_auth
-from app.database.models import ExpenseRecord, User
-from app.expenses.repository import ExpenseRepository
-from app.images.service import ImageService
+from app.database.models import User
 
 router = APIRouter(prefix="", tags=["webui"])
 templates = Jinja2Templates(directory="templates")
@@ -34,6 +34,7 @@ async def login(
     password: str = Form(...),
 ):
     from app.auth.service import AuthService
+
     auth = AuthService()
     user = await auth.authenticate(username, password)
     if not user:
@@ -65,14 +66,25 @@ async def expense_list(request: Request, current_user: User = Depends(get_curren
     repo = ExpenseRepository()
     expenses = await repo.get_pending(current_user)
     has_active = any(
-        e.status in ("EN_COLA", "ANALIZANDO", "ESPERANDO_ARCHIVO_ESTABLE",
-                      "LISTO_PARA_REVISION", "REQUIERE_REVISION", "PENDIENTE_DE_ENVIO")
+        e.status
+        in (
+            "EN_COLA",
+            "ANALIZANDO",
+            "ESPERANDO_ARCHIVO_ESTABLE",
+            "LISTO_PARA_REVISION",
+            "REQUIERE_REVISION",
+            "PENDIENTE_DE_ENVIO",
+        )
         for e in expenses
     )
     return templates.TemplateResponse(
         "partials/expense-table.html",
-        {"request": request, "current_user": current_user, "expenses": expenses,
-         "polling_active": has_active},
+        {
+            "request": request,
+            "current_user": current_user,
+            "expenses": expenses,
+            "polling_active": has_active,
+        },
     )
 
 
@@ -105,12 +117,19 @@ async def expense_status(
     if current_user.role != "admin" and expense.owner != current_user.username:
         raise HTTPException(status_code=403)
     is_terminal = expense.status in (
-        "ENVIADO", "DUPLICADO_EXACTO", "ERROR_PROCESAMIENTO", "ERROR_SHEETS"
+        "ENVIADO",
+        "DUPLICADO_EXACTO",
+        "ERROR_PROCESAMIENTO",
+        "ERROR_SHEETS",
     )
     return templates.TemplateResponse(
         "partials/expense-status.html",
-        {"request": request, "current_user": current_user, "expense": expense,
-         "polling_active": not is_terminal},
+        {
+            "request": request,
+            "current_user": current_user,
+            "expense": expense,
+            "polling_active": not is_terminal,
+        },
     )
 
 
@@ -142,25 +161,36 @@ async def save_expense(
     if submitted_updated_at and submitted_updated_at != str(expense.updated_at):
         return templates.TemplateResponse(
             "partials/expense-form.html",
-            {"request": request, "current_user": current_user, "expense": expense,
-             "error": "El registro fue modificado por otro usuario. Recarga la página."},
+            {
+                "request": request,
+                "current_user": current_user,
+                "expense": expense,
+                "error": "El registro fue modificado por otro usuario. Recarga la página.",
+            },
             status_code=409,
         )
 
-    await repo.update(record_id, {
-        "transaction_date": transaction_date,
-        "group_code": group_code,
-        "ticket_description": ticket_description,
-        "category_id": category_id,
-        "account_id": account_id,
-        "unit_price": unit_price,
-        "total": total,
-        "bank": bank,
-        "transaction_type": transaction_type,
-    })
+    await repo.update(
+        record_id,
+        {
+            "transaction_date": transaction_date,
+            "group_code": group_code,
+            "ticket_description": ticket_description,
+            "category_id": category_id,
+            "account_id": account_id,
+            "unit_price": unit_price,
+            "total": total,
+            "bank": bank,
+            "transaction_type": transaction_type,
+        },
+    )
     expense = await repo.get_by_id(record_id)
     return templates.TemplateResponse(
         "partials/expense-form.html",
-        {"request": request, "current_user": current_user, "expense": expense,
-         "success": "Cambios guardados correctamente"},
+        {
+            "request": request,
+            "current_user": current_user,
+            "expense": expense,
+            "success": "Cambios guardados correctamente",
+        },
     )

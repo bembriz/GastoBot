@@ -2,19 +2,42 @@
 
 import time
 from datetime import date
+from typing import Any
 
 from app.sheets.client import get_spreadsheet
 
 MESES = [
-    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+    "Enero",
+    "Febrero",
+    "Marzo",
+    "Abril",
+    "Mayo",
+    "Junio",
+    "Julio",
+    "Agosto",
+    "Septiembre",
+    "Octubre",
+    "Noviembre",
+    "Diciembre",
 ]
 
 COLUMNAS = [
-    "Fecha del gasto", "Categoria", "Descripcion", "Empleado",
-    "Pagado por", "Actividades", "Fecha contable", "Cuenta",
-    "Precio unitario", "Cantidad", "Incluir impuestos",
-    "Importe de impuestos", "Total", "Estado", "Banco", "Transaccion",
+    "Fecha del gasto",
+    "Categoria",
+    "Descripcion",
+    "Empleado",
+    "Pagado por",
+    "Actividades",
+    "Fecha contable",
+    "Cuenta",
+    "Precio unitario",
+    "Cantidad",
+    "Incluir impuestos",
+    "Importe de impuestos",
+    "Total",
+    "Estado",
+    "Banco",
+    "Transaccion",
 ]
 
 
@@ -40,7 +63,7 @@ def find_next_empty_row(sheet_name: str) -> int:
     return len(all_values) + 1
 
 
-def build_sheet_row(record, category_code: str = "", account_code: str = "") -> list[str]:
+def build_sheet_row(record: Any, category_code: str = "", account_code: str = "") -> list[str]:
     fecha = str(record.transaction_date) if record.transaction_date else ""
     cat = category_code or ""
     acc = account_code or ""

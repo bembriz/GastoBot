@@ -238,10 +238,7 @@ This skill implements PRD Section 13 (Google Sheets) — the business destinatio
      ```python
      {
          "status": "MATCH" | "MISMATCH" | "NOT_FOUND_IN_CONTROL" | "NOT_FOUND_IN_SHEET",
-         "differences": [
-             {"field": "amount", "local": 700.00, "sheets": 750.00},
-             ...
-         ],
+         "differences": [{"field": "amount", "local": 700.00, "sheets": 750.00}, ...],
          "control_entry": {...},
          "sheet_row_data": [...],
          "local_data": {...},

@@ -1,15 +1,16 @@
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-import pytest
 import pytest_asyncio
 
 # ---------------------------------------------------------------------------
 # Set required env vars BEFORE any app imports that read os.environ at module level
 # ---------------------------------------------------------------------------
 if "GASTOSIA_DATABASE_HOST" not in os.environ:
-    os.environ["GASTOSIA_DATABASE_HOST"] = os.environ.get("GASTOSIA_DATABASE_HOST", "192.168.100.45")
+    os.environ["GASTOSIA_DATABASE_HOST"] = os.environ.get(
+        "GASTOSIA_DATABASE_HOST", "192.168.100.45"
+    )
 if "GASTOSIA_DATABASE_PORT" not in os.environ:
     os.environ["GASTOSIA_DATABASE_PORT"] = os.environ.get("GASTOSIA_DATABASE_PORT", "5432")
 if "GASTOSIA_DATABASE_NAME" not in os.environ:
@@ -19,17 +20,18 @@ if "GASTOSIA_DATABASE_USER" not in os.environ:
 if "GASTOSIA_DATABASE_PASSWORD" not in os.environ:
     os.environ["GASTOSIA_DATABASE_PASSWORD"] = os.environ.get("GASTOSIA_DATABASE_PASSWORD", "")
 
-if os.environ.get("GASTOSIA_USE_ADMIN_DB"):
-    if "GASTOSIA_POSTGRES_ADMIN_PASSWORD" not in os.environ:
-        os.environ["GASTOSIA_POSTGRES_ADMIN_PASSWORD"] = os.environ.get(
-            "GASTOSIA_POSTGRES_ADMIN_PASSWORD", ""
-        )
+if os.environ.get("GASTOSIA_USE_ADMIN_DB") and "GASTOSIA_POSTGRES_ADMIN_PASSWORD" not in os.environ:
+    os.environ["GASTOSIA_POSTGRES_ADMIN_PASSWORD"] = os.environ.get(
+        "GASTOSIA_POSTGRES_ADMIN_PASSWORD", ""
+    )
 
 if "GASTOSIA_SESSION_SECRET" not in os.environ:
     os.environ["GASTOSIA_SESSION_SECRET"] = "test-session-secret-64chars-long-key-for-tests!!"
 
 if "GASTOSIA_GEMINI_API_KEY" not in os.environ:
     os.environ["GASTOSIA_GEMINI_API_KEY"] = "test-gemini-api-key"
+
+os.environ["GASTOSIA_TEST"] = "1"
 
 # ---------------------------------------------------------------------------
 # Now safe to import app modules
@@ -50,6 +52,7 @@ TEST_USER_STANDARD_ID: uuid.UUID | None = None
 
 def _make_session():
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
     maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     return maker()
 
@@ -108,9 +111,8 @@ async def _test_users_setup(db_session):
 async def test_admin_user(db_session, _test_users_setup):
     """Return the pre-created admin user."""
     from sqlalchemy import select as sa_select
-    result = await db_session.execute(
-        sa_select(User).where(User.username == TEST_USER_ADMIN_NAME)
-    )
+
+    result = await db_session.execute(sa_select(User).where(User.username == TEST_USER_ADMIN_NAME))
     row = result.scalar_one()
     row.id = row.id  # ensure loaded
     return row
@@ -120,6 +122,7 @@ async def test_admin_user(db_session, _test_users_setup):
 async def test_standard_user(db_session, _test_users_setup):
     """Return the pre-created standard user."""
     from sqlalchemy import select as sa_select
+
     result = await db_session.execute(
         sa_select(User).where(User.username == TEST_USER_STANDARD_NAME)
     )
@@ -139,8 +142,8 @@ async def test_record(db_session, _test_users_setup, test_admin_user):
         image_hash=_unique_hash(),
         status="DETECTADO",
         source_filename=f"test_{uuid.uuid4().hex[:8]}.jpg",
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     db_session.add(record)
     await db_session.commit()

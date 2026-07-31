@@ -5,17 +5,17 @@ NO ejecutar directamente - es referencia para app/auth/password.py
 """
 
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, InvalidHashError
+from argon2.exceptions import InvalidHashError, VerifyMismatchError
 
 # Configuracion recomendada para Argon2id (RFC 9106)
 # Parametros ajustados para equilibrio seguridad/rendimiento en VM con 4 vCPU
 ph = PasswordHasher(
-    time_cost=3,        # 3 iteraciones
+    time_cost=3,  # 3 iteraciones
     memory_cost=65536,  # 64 MB de RAM
-    parallelism=4,      # 4 hilos (matching 4 vCPU)
-    hash_len=32,        # 32 bytes de hash output
-    salt_len=16,        # 16 bytes de salt aleatorio
-    encoding='utf-8',
+    parallelism=4,  # 4 hilos (matching 4 vCPU)
+    hash_len=32,  # 32 bytes de hash output
+    salt_len=16,  # 16 bytes de salt aleatorio
+    encoding="utf-8",
 )
 
 
@@ -44,7 +44,6 @@ def needs_rehash(password_hash: str) -> bool:
 
 # Ejemplo de uso (NO ejecutar con contrasenas reales versionadas)
 if __name__ == "__main__":
-    import os
 
     test_password = "TestPassword123!"
     hashed = hash_password(test_password)

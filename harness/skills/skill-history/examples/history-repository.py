@@ -2,15 +2,14 @@
 # Archivo: app/history/repository.py
 
 from datetime import date, datetime
-from typing import Optional
-from sqlalchemy import select, func, and_, or_, desc
+
+from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database.models import ExpenseRecord, AuditEvent, User
-from app.database.session import get_session
+
+from app.database.models import AuditEvent, ExpenseRecord, User
 
 
 class HistoryRepository:
-
     def __init__(self, session: AsyncSession):
         self.session = session
 
@@ -18,13 +17,13 @@ class HistoryRepository:
         self,
         current_user: User,
         *,
-        owner: Optional[str] = None,
-        date_from: Optional[date] = None,
-        date_to: Optional[date] = None,
-        bank: Optional[str] = None,
-        group_code: Optional[str] = None,
-        status: Optional[str] = None,
-        search_text: Optional[str] = None,
+        owner: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        bank: str | None = None,
+        group_code: str | None = None,
+        status: str | None = None,
+        search_text: str | None = None,
         page: int = 1,
         per_page: int = 25,
     ) -> tuple[list[ExpenseRecord], int]:
@@ -49,12 +48,14 @@ class HistoryRepository:
 
         if search_text:
             text_filter = f"%{search_text}%"
-            conditions.append(or_(
-                ExpenseRecord.ticket_description.ilike(text_filter),
-                ExpenseRecord.final_description.ilike(text_filter),
-                ExpenseRecord.source_filename.ilike(text_filter),
-                ExpenseRecord.group_code.ilike(text_filter),
-            ))
+            conditions.append(
+                or_(
+                    ExpenseRecord.ticket_description.ilike(text_filter),
+                    ExpenseRecord.final_description.ilike(text_filter),
+                    ExpenseRecord.source_filename.ilike(text_filter),
+                    ExpenseRecord.group_code.ilike(text_filter),
+                )
+            )
 
         # Count query
         count_q = select(func.count(ExpenseRecord.id))
@@ -85,9 +86,7 @@ class HistoryRepository:
         result = await self.session.execute(q)
         return list(result.scalars().all())
 
-    async def get_reconciliation_status(
-        self, record_id: int
-    ) -> dict:
+    async def get_reconciliation_status(self, record_id: int) -> dict:
         """Compare local record with _Control sheet data."""
         record_q = select(ExpenseRecord).where(ExpenseRecord.id == record_id)
         result = await self.session.execute(record_q)
@@ -107,7 +106,9 @@ class HistoryRepository:
             "sheet_name": record.sheet_name,
             "sheet_row": record.sheet_row,
             "local_data": {
-                "transaction_date": str(record.transaction_date) if record.transaction_date else None,
+                "transaction_date": str(record.transaction_date)
+                if record.transaction_date
+                else None,
                 "amount": float(record.amount) if record.amount else None,
                 "bank": record.bank,
                 "transaction_type": record.transaction_type,
@@ -120,9 +121,7 @@ class HistoryRepository:
             },
         }
 
-    async def update_record(
-        self, record_id: int, data: dict, updated_by: str
-    ) -> ExpenseRecord:
+    async def update_record(self, record_id: int, data: dict, updated_by: str) -> ExpenseRecord:
         """Update a record and log audit event."""
         record_q = select(ExpenseRecord).where(ExpenseRecord.id == record_id)
         result = await self.session.execute(record_q)
@@ -155,8 +154,18 @@ class HistoryRepository:
 
     def get_month_name_spanish(self, dt: date) -> str:
         months = [
-            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+            "Enero",
+            "Febrero",
+            "Marzo",
+            "Abril",
+            "Mayo",
+            "Junio",
+            "Julio",
+            "Agosto",
+            "Septiembre",
+            "Octubre",
+            "Noviembre",
+            "Diciembre",
         ]
         return months[dt.month - 1]
 
@@ -165,7 +174,7 @@ class HistoryRepository:
 
     def detect_month_change(
         self, record: ExpenseRecord, new_date: date
-    ) -> tuple[bool, Optional[str], Optional[str]]:
+    ) -> tuple[bool, str | None, str | None]:
         """Check if editing date will change the sheet month."""
         if not record.transaction_date:
             return False, None, None

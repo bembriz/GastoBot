@@ -1,0 +1,47 @@
+{
+  "skill_name": "skill-fase5-aceptacion",
+  "phase": "fase5",
+  "timestamp": "2026-07-30T23:45:00-06:00",
+  "status": "passed",
+  "summary": "Prueba de recuperacion ejecutada en VM. systemctl restart gastos-ia exitoso: servicio active, 110 registros preservados, 9 items en processing_queue intactos. HTTPS responde 200 tras restart. Servicios auto-start habilitados (gastos-ia, caddy, ollama enabled). Servicio activo 1h 16min sin reinicios previos.",
+  "metrics": {
+    "restarts_performed": 1,
+    "records_before": 110,
+    "records_after": 110,
+    "queue_before": 9,
+    "queue_after": 9,
+    "https_after": 200
+  },
+  "checks": [
+    {
+      "id": "REC-VM-01",
+      "status": "passed",
+      "detail": "systemctl restart gastos-ia OK"
+    },
+    {
+      "id": "REC-VM-02",
+      "status": "passed",
+      "detail": "110 expense_records preserved"
+    },
+    {
+      "id": "REC-VM-03",
+      "status": "passed",
+      "detail": "9 processing_queue items preserved"
+    },
+    {
+      "id": "REC-VM-04",
+      "status": "passed",
+      "detail": "HTTPS 200 OK after restart"
+    },
+    {
+      "id": "REC-VM-05",
+      "status": "passed",
+      "detail": "Services auto-start enabled (systemctl is-enabled)"
+    },
+    {
+      "id": "REC-VM-06",
+      "status": "passed",
+      "detail": "Service uptime: 1h 16min before restart"
+    }
+  ]
+}

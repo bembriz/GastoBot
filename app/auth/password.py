@@ -1,7 +1,7 @@
 """Hashing de contrasenas con Argon2id."""
 
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHashError
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
 ph = PasswordHasher(
     time_cost=3,

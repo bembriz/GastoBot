@@ -47,22 +47,24 @@ Requisitos del PRD §7, §7.2, §16:
 **Clase `OllamaClient`:**
 ```python
 class OllamaClient:
-    def __init__(self, base_url: str = "http://localhost:11434", model: str = None, timeout: int = 300):
+    def __init__(
+        self, base_url: str = "http://localhost:11434", model: str = None, timeout: int = 300
+    ):
         self.base_url = base_url
         self.model = model or os.environ.get("GASTOSIA_OLLAMA_MODEL", "qwen3-vl:4b")
         self.timeout = timeout
         self.prompt = self._load_prompt()
-    
+
     def _load_prompt(self) -> str:
         """Carga el prompt desde prompts/expense_extraction.md"""
-    
+
     async def extract_from_image(self, image_path: str) -> ExtractionResult:
         """
         Envia imagen a Ollama y retorna resultado estructurado.
-        
+
         Returns:
             ExtractionResult con datos extraidos, raw response, metadata
-        
+
         Raises:
             OllamaTimeoutError: si tarda > timeout
             OllamaConnectionError: si no puede conectar
@@ -78,27 +80,24 @@ En `app/extraction/client.py`:
 async def _call_ollama(self, image_path: str) -> dict:
     """Llama a Ollama API con la imagen en base64."""
     import base64
-    
-    with open(image_path, 'rb') as f:
-        image_b64 = base64.b64encode(f.read()).decode('utf-8')
-    
+
+    with open(image_path, "rb") as f:
+        image_b64 = base64.b64encode(f.read()).decode("utf-8")
+
     payload = {
         "model": self.model,
         "prompt": self.prompt,
         "images": [image_b64],
         "stream": False,
         "options": {
-            "temperature": 0.1,   # Baja temperatura para respuestas deterministicas
-            "num_predict": 512,   # Limitar tokens de respuesta
-        }
+            "temperature": 0.1,  # Baja temperatura para respuestas deterministicas
+            "num_predict": 512,  # Limitar tokens de respuesta
+        },
     }
-    
+
     # Usar httpx para async
     async with httpx.AsyncClient(timeout=self.timeout) as client:
-        response = await client.post(
-            f"{self.base_url}/api/generate",
-            json=payload
-        )
+        response = await client.post(f"{self.base_url}/api/generate", json=payload)
         response.raise_for_status()
         return response.json()
 ```
@@ -114,6 +113,7 @@ from typing import Optional
 import json
 import re
 
+
 @dataclass
 class ExtractionResult:
     transaction_date: Optional[date]
@@ -128,10 +128,11 @@ class ExtractionResult:
     elapsed_ms: int
     model_name: str
 
+
 def parse_ollama_response(raw_response: str) -> ExtractionResult:
     """
     Parsea la respuesta de Ollama y extrae los campos requeridos.
-    
+
     Maneja:
     - JSON limpio
     - JSON dentro de bloques markdown (```json ... ```)
@@ -139,17 +140,19 @@ def parse_ollama_response(raw_response: str) -> ExtractionResult:
     - Campos faltantes (null)
     - Tipos incorrectos (convierte o asigna null)
     """
-    
+
+
 def validate_extraction(result: ExtractionResult) -> list[str]:
     """
     Valida los datos extraidos y retorna lista de warnings.
-    
+
     Reglas:
     - transaction_date debe ser fecha valida
     - amount debe ser numero positivo
     - transaction_type debe ser 'Transferencia' o 'Credito'
     - bank no debe ser vacio
     """
+
 
 def normalize_extraction(result: ExtractionResult) -> ExtractionResult:
     """
@@ -169,12 +172,12 @@ En `app/extraction/confidence.py`:
 def evaluate_confidence(result: ExtractionResult) -> dict:
     """
     Evalua la confianza de la extraccion.
-    
+
     PRD §16:
     - Alta: >= 0.90 -> visualizacion normal
     - Media: 0.70-0.89 -> advertencia
     - Baja: < 0.70 -> resaltado y revision
-    
+
     Usa:
     1. Confianza reportada por el modelo (si existe en la respuesta)
     2. Heuristicas propias:
@@ -184,25 +187,22 @@ def evaluate_confidence(result: ExtractionResult) -> dict:
        - Descripcion muy corta (< 3 chars) -> baja confianza
     3. Confianza agregada: promedio de confianzas por campo
     """
-    
+
     confidence = result.confidence.copy()
-    
+
     # Heuristicas adicionales
     if result.transaction_date and result.transaction_date > date.today():
-        confidence['transaction_date'] = min(confidence.get('transaction_date', 0.5), 0.3)
-    
+        confidence["transaction_date"] = min(confidence.get("transaction_date", 0.5), 0.3)
+
     if result.amount and result.amount == 0:
-        confidence['amount'] = min(confidence.get('amount', 0.5), 0.1)
-    
-    if result.bank and result.bank.upper() == 'DESCONOCIDO':
-        confidence['bank'] = 0.1
-    
+        confidence["amount"] = min(confidence.get("amount", 0.5), 0.1)
+
+    if result.bank and result.bank.upper() == "DESCONOCIDO":
+        confidence["bank"] = 0.1
+
     overall = sum(confidence.values()) / len(confidence) if confidence else 0.0
-    
-    return {
-        **confidence,
-        'overall': round(overall, 2)
-    }
+
+    return {**confidence, "overall": round(overall, 2)}
 ```
 
 ### Step 6: Integrar con el worker FIFO
@@ -247,7 +247,7 @@ try:
     data = json.loads(clean_response)
 except json.JSONDecodeError as e:
     # Intentar extraer JSON con regex
-    match = re.search(r'\{.*\}', raw_response, re.DOTALL)
+    match = re.search(r"\{.*\}", raw_response, re.DOTALL)
     if match:
         try:
             data = json.loads(match.group(0))
@@ -257,7 +257,7 @@ except json.JSONDecodeError as e:
         raise InvalidJsonError(f"No se encontro JSON en la respuesta")
 
 # 4. Campos faltantes
-required = ['transaction_date', 'amount', 'ticket_description', 'bank', 'transaction_type']
+required = ["transaction_date", "amount", "ticket_description", "bank", "transaction_type"]
 missing = [f for f in required if f not in data]
 if missing:
     # No es fatal; los campos faltantes se dejan como null

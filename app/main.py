@@ -2,34 +2,39 @@
 
 import asyncio
 import os
-import sys
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.auth.routes import router as auth_router
-from app.expenses.routes import router as expenses_router
 from app.catalogs.routes import router as catalogs_router
+from app.expenses.routes import router as expenses_router
 from app.history.routes import router as history_router
 
 _monitor_task = None
 _worker_task = None
 
 
-async def _start_monitor():
+async def _start_monitor() -> None:
     from app.images.monitor import monitor_loop
+
     await monitor_loop()
 
 
-async def _start_worker():
+async def _start_worker() -> None:
     from app.expenses.queue import worker_loop
+
     await worker_loop()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     global _monitor_task, _worker_task
+    if os.environ.get("GASTOSIA_TEST"):
+        yield
+        return
     try:
         _monitor_task = asyncio.create_task(_start_monitor())
         _worker_task = asyncio.create_task(_start_worker())

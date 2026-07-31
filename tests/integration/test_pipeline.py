@@ -1,11 +1,10 @@
 import uuid
+from datetime import UTC, datetime
+
 import pytest
 import pytest_asyncio
-from datetime import datetime, timezone
-from sqlalchemy import select
 
 from app.database.models import ExpenseRecord
-from app.database.session import async_session
 
 
 def _unique_hash() -> str:
@@ -23,8 +22,8 @@ class TestCreateExpenseRecord:
             image_hash=_unique_hash(),
             status="DETECTADO",
             source_filename="integration_test_001.jpg",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         db_session.add(record)
         await db_session.commit()
@@ -51,8 +50,8 @@ class TestCreateExpenseRecord:
             transaction_type="Transferencia",
             confidence_json={"amount": 0.95},
             final_description="Material oficina",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         db_session.add(record)
         await db_session.commit()
@@ -78,8 +77,8 @@ class TestCreateExpenseRecord:
             status="DETECTADO",
             source_filename="precision_test.jpg",
             amount=9999999999.99,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         db_session.add(record)
         await db_session.commit()
@@ -97,8 +96,8 @@ class TestCreateExpenseRecord:
             image_hash=same_hash,
             status="DETECTADO",
             source_filename="dup_1.jpg",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         db_session.add(record1)
         await db_session.commit()
@@ -108,12 +107,14 @@ class TestCreateExpenseRecord:
             image_hash=same_hash,
             status="DETECTADO",
             source_filename="dup_2.jpg",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         db_session.add(record2)
 
-        with pytest.raises(Exception):
+        from sqlalchemy.exc import IntegrityError
+
+        with pytest.raises(IntegrityError):
             await db_session.commit()
 
         await db_session.rollback()
@@ -129,8 +130,8 @@ class TestUpdateExpenseStatus:
             image_hash=_unique_hash(),
             status="DETECTADO",
             source_filename=f"status_test_{uuid.uuid4().hex[:8]}.jpg",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         db_session.add(record)
         await db_session.commit()
@@ -169,7 +170,9 @@ class TestUpdateExpenseStatus:
         fresh_record.status = "ESTADO_INEXISTENTE"
         db_session.add(fresh_record)
 
-        with pytest.raises(Exception):
+        from sqlalchemy.exc import IntegrityError
+
+        with pytest.raises(IntegrityError):
             await db_session.commit()
 
         await db_session.rollback()
@@ -208,8 +211,8 @@ class TestPriceSyncC19:
                 "transaction_type": 0.80,
                 "transaction_date": 0.88,
             },
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         db_session.add(record)
         await db_session.commit()

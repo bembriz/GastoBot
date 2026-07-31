@@ -19,6 +19,9 @@
     <p>Cargando comprobantes...</p>
 </div>
 
+<div hx-get="/dashboard/errors" hx-trigger="every 10s" hx-swap="innerHTML">
+</div>
+
 <script>
     var selectedIds = new Set();
     document.body.addEventListener('htmx:afterSettle', function() {
