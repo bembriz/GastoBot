@@ -5,8 +5,10 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import OperationalError
 
 from app.auth.routes import router as auth_router
 from app.catalogs.routes import router as catalogs_router
@@ -56,6 +58,26 @@ app = FastAPI(
 )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.exception_handler(OperationalError)
+async def db_connection_error(request: Request, exc: OperationalError) -> HTMLResponse:
+    from app.templates import render
+
+    db_error = "Error de conexion a la base de datos. Verifique PostgreSQL."
+    if request.headers.get("HX-Request") == "true":
+        return HTMLResponse(f'<p class="error">{db_error}</p>', status_code=503)
+
+    return HTMLResponse(
+        render(
+            "login.html",
+            request=request,
+            user=None,
+            error=db_error,
+        ),
+        status_code=503,
+    )
+
 
 app.include_router(auth_router)
 app.include_router(expenses_router)

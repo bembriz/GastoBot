@@ -180,8 +180,9 @@ class TestAuthLoginSuccess:
                 "username": test_admin_user.username,
                 "password": TEST_USER_ADMIN_PASSWORD,
             },
+            follow_redirects=False,
         )
-        assert r.status_code == 200
+        assert r.status_code in (200, 302)
         cookie = r.cookies.get(COOKIE_NAME)
         if cookie:
             session_data = verify_session(cookie)
@@ -204,8 +205,9 @@ class TestAuthLoginSuccess:
                 "current_password": TEST_USER_ADMIN_PASSWORD,
                 "new_password": "newpassword12345",
             },
+            follow_redirects=False,
         )
-        assert r.status_code == 200
+        assert r.status_code in (200, 302)
 
 
 class TestExpensesWithRecord:

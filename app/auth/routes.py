@@ -45,25 +45,28 @@ async def login(
     username: str = Form(...),
     password: str = Form(...),
     db: AsyncSession = Depends(get_db),
-) -> HTMLResponse:
+) -> Response:
+    is_htmx = request.headers.get("HX-Request") == "true"
+
     result = await db.execute(select(User).where(User.username == username))
     user = result.scalar_one_or_none()
 
     if not user or not user.is_active:
+        msg = "Credenciales invalidas"
+        if is_htmx:
+            return HTMLResponse(f'<p class="error">{msg}</p>', status_code=401)
         return HTMLResponse(
-            render("login.html", request=request, user=None, error="Credenciales invalidas"),
+            render("login.html", request=request, user=None, error=msg),
             status_code=401,
         )
 
     if user.locked_until and user.locked_until > datetime.now(UTC):
         remaining = int((user.locked_until - datetime.now(UTC)).total_seconds() / 60)
+        msg = f"Cuenta bloqueada. Intente en {remaining} minutos"
+        if is_htmx:
+            return HTMLResponse(f'<p class="error">{msg}</p>', status_code=423)
         return HTMLResponse(
-            render(
-                "login.html",
-                request=request,
-                user=None,
-                error=f"Cuenta bloqueada. Intente en {remaining} minutos",
-            ),
+            render("login.html", request=request, user=None, error=msg),
             status_code=423,
         )
 
@@ -73,13 +76,11 @@ async def login(
             user.locked_until = datetime.now(UTC) + timedelta(minutes=LOCKOUT_MINUTES)
         await db.commit()
         remaining = max(0, MAX_FAILED_ATTEMPTS - user.failed_attempts)
+        msg = f"Credenciales invalidas. {remaining} intentos restantes"
+        if is_htmx:
+            return HTMLResponse(f'<p class="error">{msg}</p>', status_code=401)
         return HTMLResponse(
-            render(
-                "login.html",
-                request=request,
-                user=None,
-                error=f"Credenciales invalidas. {remaining} intentos restantes",
-            ),
+            render("login.html", request=request, user=None, error=msg),
             status_code=401,
         )
 
@@ -91,16 +92,23 @@ async def login(
     token = create_session(user.id, user.username, user.role)
 
     if user.password_change_required:
-        resp = HTMLResponse(
-            render("login.html", request=request, user=None, change_password=True),
-        )
-        set_session_cookie(resp, token)
-        return resp
+        if is_htmx:
+            r: Response = HTMLResponse("")
+            set_session_cookie(r, token)
+            r.headers["HX-Redirect"] = "/login?change=1"
+            return r
+        r = RedirectResponse("/login?change=1", status_code=302)
+        set_session_cookie(r, token)
+        return r
 
-    resp = HTMLResponse("")
-    set_session_cookie(resp, token)
-    resp.headers["HX-Redirect"] = "/dashboard"
-    return resp
+    if is_htmx:
+        r = HTMLResponse("")
+        set_session_cookie(r, token)
+        r.headers["HX-Redirect"] = "/dashboard"
+        return r
+    r = RedirectResponse("/dashboard", status_code=302)
+    set_session_cookie(r, token)
+    return r
 
 
 @router.get("/logout")
@@ -123,19 +131,38 @@ async def change_password(
     new_password: str = Form(...),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> HTMLResponse:
+) -> Response:
+    is_htmx = request.headers.get("HX-Request") == "true"
+
     if not verify_password(current_password, user.password_hash):
-        return HTMLResponse('<span class="error">Contrasena actual incorrecta</span>')
+        if is_htmx:
+            return HTMLResponse('<span class="error">Contrasena actual incorrecta</span>')
+        return HTMLResponse(
+            render(
+                "login.html",
+                request=request,
+                user=None,
+                change_password=True,
+                error="Contrasena actual incorrecta",
+            ),
+        )
 
     if len(new_password) < MIN_PASSWORD_LENGTH:
-        return HTMLResponse(f'<span class="error">Minimo {MIN_PASSWORD_LENGTH} caracteres</span>')
+        msg = f"Minimo {MIN_PASSWORD_LENGTH} caracteres"
+        if is_htmx:
+            return HTMLResponse(f'<span class="error">{msg}</span>')
+        return HTMLResponse(
+            render("login.html", request=request, user=None, change_password=True, error=msg),
+        )
 
     user.password_hash = hash_password(new_password)
     user.password_change_required = False
     await db.commit()
 
-    response.headers["HX-Redirect"] = "/dashboard"
-    return HTMLResponse("")
+    if is_htmx:
+        response.headers["HX-Redirect"] = "/dashboard"
+        return HTMLResponse("")
+    return RedirectResponse("/dashboard", status_code=302)
 
 
 @router.get("/api/me")

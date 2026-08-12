@@ -41,7 +41,15 @@ async def root(request: Request, db: AsyncSession = Depends(get_db)) -> Response
 
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request) -> HTMLResponse:
+async def login_page(
+    request: Request, change: str = "", db: AsyncSession = Depends(get_db)
+) -> HTMLResponse:
+    if change == "1":
+        user = await get_user(request, db)
+        if user and user.password_change_required:
+            return HTMLResponse(
+                render("login.html", request=request, user=None, change_password=True)
+            )
     return HTMLResponse(render("login.html", request=request, user=None))
 
 
