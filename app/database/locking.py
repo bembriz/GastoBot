@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 def _group_lock_id(group_code: str) -> int:
     """Convertir group_code en un int de 64 bits para pg_advisory_xact_lock."""
     h = hashlib.md5(group_code.upper().encode())
-    return int.from_bytes(h.digest()[:8], byteorder="big", signed=False)
+    return int.from_bytes(h.digest()[:8], byteorder="big", signed=True)
 
 
 async def get_next_consecutive(db: AsyncSession, group_code: str) -> int:

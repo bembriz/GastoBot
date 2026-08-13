@@ -1,9 +1,9 @@
 # Progress Tracking — Gastos IA
 
-> Ultima actualizacion: 2026-07-31T16:40:00-06:00
+> Ultima actualizacion: 2026-08-12T23:30:00-06:00
 > Estado: FASES 0-5 COMPLETADAS. Sistema operativo en https://gastos.local.
 > Pendiente: pruebas de usuario (Ruben/Esme) con imagenes reales.
-> Cambios 2026-07-31: Extraccion multi-key Gemini + Kimi, seccion de errores en dashboard, skill-kimi-integration, fix visor imagen + boton logout.
+> Cambios 2026-08-12: boton Reenviar en errores de extraccion, fix desbordamiento int64 en consecutivos (pg_advisory_xact_lock), modelo Gemini flash-latest.
 
 ---
 
@@ -20,16 +20,16 @@
 
 ---
 
-## Quality Gates (2026-07-31) — TODOS PASANDO
+## Quality Gates (2026-08-12) — TODOS PASANDO
 
 | Gate | Estado | Detalle |
 |------|--------|---------|
-| Ruff lint | **pass** | 0 errores, 58 files |
-| Ruff format | **pass** | 58 files ok |
+| Ruff lint | **pass** | 0 errores, 59 files |
+| Ruff format | **pass** | 59 files ok |
 | Mypy strict | **pass** | 0 issues en 26 source files |
-| Unit + Integration | **pass** | 214 passed, 2 skipped |
+| Unit + Integration | **pass** | 220 passed, 2 skipped |
 | E2E Playwright | **pass** | 25 passed (16 public + 9 auth) |
-| Coverage | **pass** | 95% (threshold 60%) |
+| Coverage | **pass** | 90% (threshold 60%) |
 | pip-audit | **pass** | 0 vulnerabilidades |
 | Secrets scan | **pass** | 0 secrets (manual scan) |
 | Pre-commit hook | **pass** | ruff + mypy + pytest |
@@ -40,14 +40,15 @@
 
 | Motor | Velocidad | Costo | Estado |
 |-------|-----------|-------|--------|
-| Gemini 2.0 Flash (key 1) | ~2s | Gratis 1500 req/dia | Cuenta bembriz |
-| Gemini 2.0 Flash (key 2) | ~2s | Gratis 1500 req/dia | Cuenta xuum23 |
+| Gemini flash-latest (key 1) | ~2s | Gratis 1500 req/dia | Cuenta bembriz |
+| Gemini flash-latest (key 2) | ~2s | Gratis 1500 req/dia | Cuenta xuum23 |
 | Kimi (Moonshot) | ~5-10s | Pago por uso | Fallback si ambas Gemini sin cuota |
 
 El sistema intenta todas las keys de Gemini en secuencia (GASTOSIA_GEMINI_API_KEY_1, _2, ...).
 Si todas fallan por cuota agotada (429/RESOURCE_EXHAUSTED), automaticamente usa Kimi.
 Agregar mas keys Gemini es trivial: crear GASTOSIA_GEMINI_API_KEY_N en .env.
 Los errores de extraccion son visibles en la UI (seccion al pie del dashboard, polling 10s).
+Cada error tiene un boton "Reenviar" que re-encola la imagen para reintentar la extraccion.
 
 ---
 
@@ -83,7 +84,7 @@ Los errores de extraccion son visibles en la UI (seccion al pie del dashboard, p
 | `app/database/` | engine, session, models (9 tablas), locking |
 | `app/auth/` | password (Argon2id), session, routes, permissions |
 | `app/images/` | monitor (SMB 5s, SHA-256, EXIF) |
-| `app/expenses/` | routes (dashboard HTMX, visor, update), queue (FIFO), extraction (Gemini + Ollama fallback) |
+| `app/expenses/` | routes (dashboard HTMX, visor, update, retry), queue (FIFO), extraction (Gemini + Kimi fallback) |
 | `app/catalogs/` | routes (CRUD categorias/cuentas, solo admin) |
 | `app/history/` | routes (busqueda, filtros) |
 | `app/sheets/` | client (gspread), tabs (Mes-AA), sender (11 pasos) |
@@ -102,7 +103,7 @@ Los errores de extraccion son visibles en la UI (seccion al pie del dashboard, p
 - **OS**: Ubuntu Server 24.04.4 LTS
 - **Red**: Static IP `192.168.100.75/24`
 - **Caddy**: HTTPS `gastos.local` → `localhost:8000`
-- **Extraction**: Gemini 2.0 Flash → Ollama qwen3-vl:4b (fallback automatico)
+- **Extraction**: Gemini flash-latest → Kimi (fallback automatico)
 - **SMB**: `/mnt/smb/Ruben` y `/mnt/smb/Esme`
 - **Systemd**: `gastos-ia.service` enabled
 
@@ -120,14 +121,17 @@ systemctl status gastos-ia
 
 # Cambiar modelo Gemini
 sudo nano /etc/gastos-ia/gastos-ia.env
-# GASTOSIA_GEMINI_MODEL=gemini-2.0-flash
+# GASTOSIA_GEMINI_MODEL=gemini-flash-latest
 sudo systemctl restart gastos-ia
 ```
 
-## Bugs Corregidos (2026-07-29/31)
+## Bugs Corregidos (2026-07-29 / 08-12)
 
 | Fecha | Bug | Fix |
 |-------|-----|-----|
+| Ago 12 | Envio a Sheets fallaba con `DataError: value out of int64 range` en `pg_advisory_xact_lock` | `_group_lock_id` genera int64 con signo (`signed=True`). Hash de `PSAV-260730` desbordaba el rango sin signo. |
+| Ago 12 | Gemini 2.0-flash deprecado (404) de nuevo | `GASTOSIA_GEMINI_MODEL=gemini-flash-latest` (alias rodante) |
+| Ago 12 | Imagenes con error de extraccion no se podian reintentar desde la UI | Endpoint `POST /expenses/{id}/retry` + boton "Reenviar" en seccion de errores; `/dashboard/errors` lista solo `ERROR_PROCESAMIENTO` con filtro por dueño |
 | Jul 31 | Gemini 2.5-flash deprecado (404) | Cambiar default a gemini-2.0-flash |
 | Jul 31 | Gemini cuota agotada (429) sin alternativa | Gemini multi-key + Kimi fallback. Se elimina Ollama por lentitud. |
 | Jul 31 | Errores de extraccion invisibles en dashboard | Nueva seccion HTMX con polling 10s de errores recientes |

@@ -2,7 +2,7 @@
 
 import os
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -13,7 +13,14 @@ from starlette.responses import Response
 
 from app.auth.permissions import get_current_user
 from app.auth.session import session_cookie_name, verify_session
-from app.database.models import CatalogCache, ExpenseRecord, ExtractionRun, ImageFile, User
+from app.database.models import (
+    CatalogCache,
+    ExpenseRecord,
+    ExtractionRun,
+    ImageFile,
+    ProcessingQueue,
+    User,
+)
 from app.database.session import get_db
 from app.sheets.sender import send_expense as send_expense_to_sheets
 from app.templates import render
@@ -121,29 +128,40 @@ async def dashboard_errors(request: Request, db: AsyncSession = Depends(get_db))
     if not user:
         return HTMLResponse("")
 
-    result = await db.execute(
-        select(ExtractionRun)
-        .where(
-            ExtractionRun.error_message.isnot(None),
-            ExtractionRun.error_message != "",
-        )
-        .order_by(ExtractionRun.created_at.desc())
+    q = (
+        select(ExpenseRecord)
+        .where(ExpenseRecord.status == "ERROR_PROCESAMIENTO")
+        .order_by(ExpenseRecord.created_at.desc())
         .limit(20)
     )
-    err_runs = result.scalars().all()
+    if user.role != "admin":
+        q = q.where(ExpenseRecord.owner_id == user.id)
+
+    result = await db.execute(q)
+    records = result.scalars().all()
 
     errors = []
-    for erun in err_runs:
-        record_result = await db.execute(
-            select(ExpenseRecord).where(ExpenseRecord.id == erun.record_id)
+    for record in records:
+        err_result = await db.execute(
+            select(ExtractionRun)
+            .where(
+                ExtractionRun.record_id == record.id,
+                ExtractionRun.error_message.isnot(None),
+                ExtractionRun.error_message != "",
+            )
+            .order_by(ExtractionRun.created_at.desc())
+            .limit(1)
         )
-        record = record_result.scalar_one_or_none()
+        erun = err_result.scalar_one_or_none()
         errors.append(
             {
-                "timestamp": erun.created_at.strftime("%H:%M:%S") if erun.created_at else "?",
-                "engine": erun.model_name or "?",
-                "filename": record.source_filename if record else "?",
-                "message": erun.error_message or "?",
+                "record_id": str(record.id),
+                "timestamp": (
+                    erun.created_at.strftime("%H:%M:%S") if erun and erun.created_at else "?"
+                ),
+                "engine": erun.model_name if erun else "?",
+                "filename": record.source_filename or "?",
+                "message": erun.error_message if erun else "Error de extraccion",
             }
         )
 
@@ -329,6 +347,54 @@ async def send_expense(
             f"(fila {result.get('row')} en {result.get('tab')})</span>"
         )
     return HTMLResponse(f'<span class="error">{result["error"]}</span>')
+
+
+@router.post("/expenses/{record_id}/retry")
+async def retry_expense(
+    record_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> HTMLResponse:
+    result = await db.execute(select(ExpenseRecord).where(ExpenseRecord.id == record_id))
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(404, "Comprobante no encontrado")
+
+    if user.role != "admin" and record.owner_id != user.id:
+        raise HTTPException(403, "No autorizado")
+
+    if record.status != "ERROR_PROCESAMIENTO":
+        raise HTTPException(409, "El registro no esta en estado de error")
+
+    record.status = "EN_COLA"
+    record.transaction_date = None
+    record.amount = None
+    record.ticket_description = None
+    record.bank = None
+    record.transaction_type = None
+    record.confidence_json = None
+    record.group_code = None
+    record.consecutive = None
+    record.final_description = None
+    record.sent_at = None
+
+    q_result = await db.execute(
+        select(ProcessingQueue).where(ProcessingQueue.record_id == record.id)
+    )
+    queue_entry = q_result.scalar_one_or_none()
+    if queue_entry:
+        queue_entry.status = "EN_COLA"
+        queue_entry.enqueued_at = datetime.now(UTC)
+        queue_entry.claimed_at = None
+        queue_entry.completed_at = None
+        queue_entry.worker_id = None
+        queue_entry.attempts = 0
+        queue_entry.last_error = None
+    else:
+        db.add(ProcessingQueue(record_id=record.id, status="EN_COLA"))
+
+    await db.commit()
+    return HTMLResponse('<span style="color:var(--success);">✓ Reenviado a la cola</span>')
 
 
 @router.post("/expenses/bulk-send")

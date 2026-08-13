@@ -27,7 +27,11 @@ class TestGroupLockId:
 
     def test_fits_64_bits(self):
         val = _group_lock_id("ANYCODE")
-        assert 0 <= val < 2**64
+        assert -(2**63) <= val < 2**63
+
+    def test_problematic_code_fits_signed_64(self):
+        val = _group_lock_id("PSAV-260730")
+        assert -(2**63) <= val < 2**63
 
 
 class TestGetNextConsecutive:
