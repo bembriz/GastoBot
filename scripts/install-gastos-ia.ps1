@@ -57,10 +57,14 @@ $Script:Config = @{
     VMGateway           = ""  # Will be auto-detected
     VMDNS              = @("8.8.8.8", "8.8.4.4")  # Default; will be detected
     VMSSHUser           = "gastos-admin"
-    SMBShareBase        = "\\SERVIDOR\GastosIA"
+    # NOTA (2026-08-17): desde la VM, el host Windows NO es alcanzable por la IP
+    # de su Ethernet fisica (192.168.100.45); la VM debe usar la IP de vEthernet
+    # del switch externo (actualmente 192.168.100.5) tanto para PostgreSQL como
+    # para los shares SMB. Las PCs de la LAN si usan \\192.168.100.45\GastosIA.
+    SMBShareBase        = "\\192.168.100.5\GastosIA"  # visto desde la VM (vEthernet del host)
     SMBMountBase        = "/mnt/smb"
     SMBUsers            = @("Ruben", "Esme")
-    PostgreSQLHost      = ""  # Will be prompted
+    PostgreSQLHost      = "192.168.100.5"  # vEthernet del host; sobreescribible al instalar
     PostgreSQLPort      = 5432
     PostgreSQLDB        = "gastos_ia"
     PostgreSQLUser      = "gastos_app"
@@ -569,8 +573,8 @@ function Initialize-Database {
     # Get PostgreSQL admin credentials
     Write-Host ""
     Write-Host "=== PostgreSQL Setup ===" -ForegroundColor Cyan
-    $pgHost = Read-Host "PostgreSQL host (IP or hostname)"
-    $Script:Config.PostgreSQLHost = $pgHost
+    $pgHost = Read-Host "PostgreSQL host (IP or hostname) (default: $($Script:Config.PostgreSQLHost))"
+    if ($pgHost) { $Script:Config.PostgreSQLHost = $pgHost }
     $pgAdminUser = Read-Host "PostgreSQL admin username (default: postgres)"
     if (-not $pgAdminUser) { $pgAdminUser = "postgres" }
     $pgAdminPass = Get-SecureUserInput -PromptMessage "PostgreSQL admin password" -MinLength 1

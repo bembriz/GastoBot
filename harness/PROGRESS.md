@@ -1,8 +1,9 @@
 # Progress Tracking — Gastos IA
 
-> Ultima actualizacion: 2026-08-12T23:30:00-06:00
+> Ultima actualizacion: 2026-08-17T00:45:00-06:00
 > Estado: FASES 0-5 COMPLETADAS. Sistema operativo en https://gastos.local.
 > Pendiente: pruebas de usuario (Ruben/Esme) con imagenes reales.
+> Cambios 2026-08-17: incidente IP host cerrado — VM usa 192.168.100.5 (vEthernet) para PostgreSQL y SMB; LAN/desarrollo usan 192.168.100.45. Ver tabla canonica en Infraestructura.
 > Cambios 2026-08-12: boton Reenviar en errores de extraccion, fix desbordamiento int64 en consecutivos (pg_advisory_xact_lock), modelo Gemini flash-latest.
 
 ---
@@ -92,19 +93,28 @@ Cada error tiene un boton "Reenviar" que re-encola la imagen para reintentar la 
 
 ## Infraestructura
 
-- **PostgreSQL**: 192.168.100.45:5432, BD `gastos_ia`, usuario `gastos_app`
+### IPs del host LENOVOSRV (canonico desde 2026-08-16)
+
+| IP | Interfaz | Uso |
+|---|---|---|
+| `192.168.100.45` | Ethernet fisica (estatica) | Equipos LAN, PCs de usuarios, desarrollo, shares SMB (`\\192.168.100.45\GastosIA`) |
+| `192.168.100.5` | vEthernet (switch Hyper-V) | **Todo el trafico VM → host**: PostgreSQL y SMB desde la VM |
+
+IMPORTANTE: la VM **no puede** alcanzar la `.45` (la interfaz fisica no responde ARP al lado de las VMs en el switch externo). Toda referencia VM→host debe usar `.5`. Es la misma instancia de PostgreSQL 15 en ambas IPs (escucha en todas las interfaces).
+
+- **PostgreSQL**: 192.168.100.5:5432 (desde la VM) / 192.168.100.45:5432 (desde LAN), BD `gastos_ia`, usuario `gastos_app`
 - **Google Sheets**: "Reporte de gastos 2026"
 - **Usuarios**: Ruben (admin), Esme (standard) — Argon2id
 - **Branch**: `dev`
 
 ### VM GastosIA
-- **Host**: LENOVOSRV (i5-7300HQ, 32 GB, Hyper-V)
+- **Host**: LENOVOSRV (i5-7300HQ, 32 GB, Hyper-V; tambien es DC de `zumpango.com`)
 - **VM**: 16 GB RAM, 4 vCPU, Gen 2, 120 GB VHDX
 - **OS**: Ubuntu Server 24.04.4 LTS
 - **Red**: Static IP `192.168.100.75/24`
 - **Caddy**: HTTPS `gastos.local` → `localhost:8000`
 - **Extraction**: Gemini flash-latest → Kimi (fallback automatico)
-- **SMB**: `/mnt/smb/Ruben` y `/mnt/smb/Esme`
+- **SMB**: `//192.168.100.5/GastosIA/{Ruben,Esme}` montado en `/mnt/smb/`
 - **Systemd**: `gastos-ia.service` enabled
 
 ## Comandos utiles (VM)
@@ -124,6 +134,14 @@ sudo nano /etc/gastos-ia/gastos-ia.env
 # GASTOSIA_GEMINI_MODEL=gemini-flash-latest
 sudo systemctl restart gastos-ia
 ```
+
+## Incidente 2026-08-16 — IP del host cambiada (CERRADO 2026-08-17)
+
+El host LENOVOSRV paso de IP dinamica `.13` a estatica `.45` (Ethernet fisica). La VM quedo apuntando a `.13` (muerta) y ademas `.45` no responde ARP desde la VM (TCP/IP activo en la interfaz fisica sobre switch externo Hyper-V). Fix: la VM usa `.5` (vEthernet del host) para PostgreSQL (`/etc/gastos-ia/gastos-ia.env`) y SMB (`/etc/fstab`). Respaldos en la VM: `gastos-ia.env.bak-20260817`, `fstab.bak-20260817`. Verificado: misma instancia PostgreSQL 15.12 en `.5` y `.45` (2 usuarios, 8 expense_records identicos).
+
+**Modelo canonico de IPs:** ver tabla en la seccion Infraestructura. VM→host siempre por `.5`; LAN/desarrollo por `.45`. Las evidencias historicas en `harness/evidence/` mencionan `.45`/`.13` porque reflejan lo que existia al ejecutarse — no modificarlas.
+
+**Pendiente menor:** `.5` es DHCP en vEthernet — conviene fijarla como estatica o hacer reserva DHCP en el router. Nota: el host es controlador de dominio (`zumpango.com`).
 
 ## Bugs Corregidos (2026-07-29 / 08-12)
 
