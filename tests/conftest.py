@@ -34,6 +34,24 @@ if "GASTOSIA_GEMINI_API_KEY" not in os.environ:
 os.environ["GASTOSIA_TEST"] = "1"
 
 # ---------------------------------------------------------------------------
+# Aislamiento: los tests NUNCA corren contra la base de produccion.
+# Sin importar lo que exporte .envrc/direnv, se fuerza la base de pruebas.
+# Para otra base de pruebas: GASTOSIA_TEST_DATABASE_NAME.
+# Escape intencional (peligroso): GASTOSIA_ALLOW_PROD_TESTS=1.
+# ---------------------------------------------------------------------------
+PROD_DB_NAME = "gastos_ia"
+TEST_DB_NAME = os.environ.get("GASTOSIA_TEST_DATABASE_NAME", "gastos_ia_test")
+
+if not os.environ.get("GASTOSIA_ALLOW_PROD_TESTS"):
+    if TEST_DB_NAME == PROD_DB_NAME:
+        raise RuntimeError(
+            "GASTOSIA_TEST_DATABASE_NAME no puede ser la base de produccion "
+            f"({PROD_DB_NAME}). Usa otra base o GASTOSIA_ALLOW_PROD_TESTS=1."
+        )
+    if os.environ["GASTOSIA_DATABASE_NAME"] == PROD_DB_NAME:
+        os.environ["GASTOSIA_DATABASE_NAME"] = TEST_DB_NAME
+
+# ---------------------------------------------------------------------------
 # Now safe to import app modules
 # ---------------------------------------------------------------------------
 from app.auth.password import hash_password  # noqa: E402

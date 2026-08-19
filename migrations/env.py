@@ -3,6 +3,7 @@
 import asyncio
 import os
 from logging.config import fileConfig
+from urllib.parse import quote_plus
 
 from alembic import context
 from sqlalchemy import pool
@@ -21,11 +22,12 @@ DB_USER = os.environ.get("GASTOSIA_MIGRATION_USER", os.environ["GASTOSIA_DATABAS
 DB_PASS = os.environ.get("GASTOSIA_MIGRATION_PASSWORD", os.environ["GASTOSIA_DATABASE_PASSWORD"])
 DATABASE_URL = (
     f"postgresql+asyncpg://"
-    f"{DB_USER}:{DB_PASS}"
+    f"{quote_plus(DB_USER)}:{quote_plus(DB_PASS)}"
     f"@{os.environ['GASTOSIA_DATABASE_HOST']}:{os.environ['GASTOSIA_DATABASE_PORT']}"
     f"/{os.environ['GASTOSIA_DATABASE_NAME']}"
 )
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+# configparser interpreta "%" como interpolacion: escapar como "%%"
+config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:
