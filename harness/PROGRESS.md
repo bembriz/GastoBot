@@ -1,8 +1,9 @@
 # Progress Tracking — Gastos IA
 
-> Ultima actualizacion: 2026-08-17T00:45:00-06:00
+> Ultima actualizacion: 2026-08-19T00:00:00-06:00
 > Estado: FASES 0-5 COMPLETADAS. Sistema operativo en https://gastos.local.
 > Pendiente: pruebas de usuario (Ruben/Esme) con imagenes reales.
+> Cambios 2026-08-19 (2): IP vEthernet del host FIJADA como estatica 192.168.100.12/24 (Manual, PersistentStore, via WinRM/pypsrp) — la causa raiz de los incidentes de IP queda eliminada. Redespliegue completo desde rama dev (commits 93c5cf3, c5c0a45, fd6d841, 992e571): rsync app/templates/static/migrations/prompts + uv sync --frozen. Eliminados archivos huerfanos en /opt/gastos-ia (queue.py, extraction.py, routes.py, etc. — queue.py ensombrecia el stdlib y rompia urllib3). Respaldo pre-despliegue: /home/gastos-admin/gastos-ia-backup-20260819.tar.gz. Verificado: login HTMX responde fragmento en 0.08s, dashboard redirige a /login, monitor SMB y worker FIFO activos.
 > Cambios 2026-08-17: incidente IP host cerrado — VM usa 192.168.100.5 (vEthernet) para PostgreSQL y SMB; LAN/desarrollo usan 192.168.100.45. Ver tabla canonica en Infraestructura.
 > Cambios 2026-08-12: boton Reenviar en errores de extraccion, fix desbordamiento int64 en consecutivos (pg_advisory_xact_lock), modelo Gemini flash-latest.
 
@@ -93,16 +94,16 @@ Cada error tiene un boton "Reenviar" que re-encola la imagen para reintentar la 
 
 ## Infraestructura
 
-### IPs del host LENOVOSRV (canonico desde 2026-08-16)
+### IPs del host LENOVOSRV (canonico desde 2026-08-19)
 
 | IP | Interfaz | Uso |
 |---|---|---|
 | `192.168.100.45` | Ethernet fisica (estatica) | Equipos LAN, PCs de usuarios, desarrollo, shares SMB (`\\192.168.100.45\GastosIA`) |
-| `192.168.100.5` | vEthernet (switch Hyper-V) | **Todo el trafico VM → host**: PostgreSQL y SMB desde la VM |
+| `192.168.100.12` | vEthernet (switch Hyper-V, **DHCP — inestable**) | **Todo el trafico VM → host**: PostgreSQL y SMB desde la VM |
 
-IMPORTANTE: la VM **no puede** alcanzar la `.45` (la interfaz fisica no responde ARP al lado de las VMs en el switch externo). Toda referencia VM→host debe usar `.5`. Es la misma instancia de PostgreSQL 15 en ambas IPs (escucha en todas las interfaces).
+IMPORTANTE: la VM **no puede** alcanzar la `.45` (la interfaz fisica no responde ARP al lado de las VMs en el switch externo). Toda referencia VM→host debe usar la IP vEthernet vigente (hoy `.12`; era `.5` hasta el 2026-08-18). Es la misma instancia de PostgreSQL 15 en ambas IPs (escucha en todas las interfaces).
 
-- **PostgreSQL**: 192.168.100.5:5432 (desde la VM) / 192.168.100.45:5432 (desde LAN), BD `gastos_ia`, usuario `gastos_app`
+- **PostgreSQL**: 192.168.100.12:5432 (desde la VM) / 192.168.100.45:5432 (desde LAN), BD `gastos_ia`, usuario `gastos_app`
 - **Google Sheets**: "Reporte de gastos 2026"
 - **Usuarios**: Ruben (admin), Esme (standard) — Argon2id
 - **Branch**: `dev`
@@ -114,7 +115,7 @@ IMPORTANTE: la VM **no puede** alcanzar la `.45` (la interfaz fisica no responde
 - **Red**: Static IP `192.168.100.75/24`
 - **Caddy**: HTTPS `gastos.local` → `localhost:8000`
 - **Extraction**: Gemini flash-latest → Kimi (fallback automatico)
-- **SMB**: `//192.168.100.5/GastosIA/{Ruben,Esme}` montado en `/mnt/smb/`
+- **SMB**: `//192.168.100.12/GastosIA/{Ruben,Esme}` montado en `/mnt/smb/`
 - **Systemd**: `gastos-ia.service` enabled
 
 ## Comandos utiles (VM)
@@ -142,6 +143,25 @@ El host LENOVOSRV paso de IP dinamica `.13` a estatica `.45` (Ethernet fisica). 
 **Modelo canonico de IPs:** ver tabla en la seccion Infraestructura. VM→host siempre por `.5`; LAN/desarrollo por `.45`. Las evidencias historicas en `harness/evidence/` mencionan `.45`/`.13` porque reflejan lo que existia al ejecutarse — no modificarlas.
 
 **Pendiente menor:** `.5` es DHCP en vEthernet — conviene fijarla como estatica o hacer reserva DHCP en el router. Nota: el host es controlador de dominio (`zumpango.com`).
+
+## Incidente 2026-08-19 — REINCIDENCIA: vEthernet DHCP cambio de `.5` a `.12` (CERRADO)
+
+Sintoma: portal cargaba `/login` pero el POST se colgaba indefinidamente (el pool de asyncpg agotaba conexiones con `TimeoutError` contra `192.168.100.5:5432`, ya muerta). El pendiente del incidente anterior se materializo: la vEthernet del host tomo una nueva IP DHCP (`.12`).
+
+Diagnostico:
+- `POST /login` con timeout de 20s sin respuesta; `GET /login` 200 inmediato (la pagina no toca la BD).
+- Desde la VM, escaneo de 5432 en la subred encontro `.12` (acepta credenciales `gastos_app`, BD `gastos_ia` con datos correctos) y `.144` (la laptop de desarrollo, otro PostgreSQL).
+- Identidad confirmada por `system_identifier` de `pg_control_system()`: `.12` y `.45` son la MISMA instancia (7498970274172338484, 15 expense_records identicos).
+- Montajes CIFS en `/mnt/smb/{Ruben,Esme}` colgados (Errno 112 Host is down) por apuntar a `.5`.
+
+Fix aplicado en la VM (respaldos `gastos-ia.env.bak-20260819`, `fstab.bak-20260819`):
+1. `sed s/192.168.100.5/192.168.100.12/` en `/etc/gastos-ia/gastos-ia.env` y `/etc/fstab`.
+2. `umount -l` de ambos montajes + `systemctl daemon-reload` + `mount -a` + `systemctl restart gastos-ia`.
+3. Verificado: SMB OK, servicio active, `POST /login` responde 401 en 0.18s (antes: timeout).
+
+**PENDIENTE CRITICO (raiz del problema):** ~~la vEthernet del host sigue en DHCP~~ **RESUELTO 2026-08-19:** vEthernet (GastosIA-External, ifIndex 2) fijada como estatica 192.168.100.12/24, gateway 192.168.100.1, DNS 192.168.100.1 (mismos valores que tenia por DHCP; PrefixOrigin Manual, PersistentStore, aplicado via WinRM con pypsrp). El incidente ya no puede repetirse por renovacion DHCP.
+
+**Deuda detectada:** ~~el codigo desplegado en `/opt/gastos-ia` data del 2026-07-31~~ **RESUELTO 2026-08-19:** redespliegue completo desde rama `dev` (rsync + `uv sync --frozen`); verificado login HTMX, monitor SMB y worker FIFO. Respaldo pre-despliegue en `/home/gastos-admin/gastos-ia-backup-20260819.tar.gz`. Nota: se eliminaron archivos huerfanos de una copia manual antigua en la raiz de `/opt/gastos-ia` (`queue.py` ensombrecia el modulo `queue` de stdlib y rompia `urllib3`/`requests`).
 
 ## Bugs Corregidos (2026-07-29 / 08-12)
 
