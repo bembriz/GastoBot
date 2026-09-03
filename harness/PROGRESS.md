@@ -1,8 +1,9 @@
 # Progress Tracking — Gastos IA
 
-> Ultima actualizacion: 2026-08-19T00:00:00-06:00
-> Estado: FASES 0-5 COMPLETADAS. Sistema operativo en https://gastos.local.
-> Pendiente: pruebas de usuario (Ruben/Esme) con imagenes reales.
+> Ultima actualizacion: 2026-09-03T00:00:00-06:00
+> Estado: FASES 0-5 COMPLETADAS. Sistema redesplegado en servidor bare-metal lenovosrv (192.168.100.24, Ubuntu 24.04, Docker).
+> Pendiente: pruebas de usuario (Ruben/Esme) con imagenes reales; instalar CA de Caddy y entrada hosts en las PCs.
+> Cambios 2026-09-03: MIGRACION A NUEVO SERVIDOR. El host Windows/Hyper-V quedo fuera de servicio; lenovosrv es ahora Ubuntu 24.04 bare metal (mismo hardware, i5-7300HQ/32GB). Stack Docker en /srv/docker/gastos-ia (compose + Caddyfile + .env en repo deployment/docker/): app (imagen nueva python:3.12-slim + uv, monitor+worker in-process, GASTOSIA_SMB_BASE=/data/gastos bind-mount de /mnt/warehouse/GastosIA), caddy (HTTPS gastos.local, CA interna NUEVA — root.crt en deployment/docker/gastos-local-root.crt, instalar en PCs), samba (servercontainers/samba, share GastosIA, usuarios ruben/esme). BD: se REUTILIZA el postgres existente (contenedor self-evaluating-trading-agent-postgres-1, pg16, alias `postgres` en red externa); rol gastos_app + base gastos_ia creados ahi, schema via alembic. Migracion desde Google Sheets (scripts/migration/import_from_sheets.py): 618 historicos de _Control (517 con colision grupo/consecutivo — datos historicos reusan pares; se importaron sin el par, final_description intacto), 8 registros actuales de Julio-26/Agosto-26, 5 imagenes vinculadas por fecha de nombre de archivo (3 sin vincular: "Imagen 1-3.jpeg"), 42 catalogos desde docs/Catalogo.xlsx (codes truncados a varchar(50)). UFW: 80/443/445/139 abiertos. Verificado: POST /login 302 en 0.1s, share SMB accesible con ruben/esme, monitor SMB y worker FIFO activos. Users Ruben/Esme con password inicial del .envrc (password_change_required).
 > Cambios 2026-08-19 (2): IP vEthernet del host FIJADA como estatica 192.168.100.12/24 (Manual, PersistentStore, via WinRM/pypsrp) — la causa raiz de los incidentes de IP queda eliminada. Redespliegue completo desde rama dev (commits 93c5cf3, c5c0a45, fd6d841, 992e571): rsync app/templates/static/migrations/prompts + uv sync --frozen. Eliminados archivos huerfanos en /opt/gastos-ia (queue.py, extraction.py, routes.py, etc. — queue.py ensombrecia el stdlib y rompia urllib3). Respaldo pre-despliegue: /home/gastos-admin/gastos-ia-backup-20260819.tar.gz. Verificado: login HTMX responde fragmento en 0.08s, dashboard redirige a /login, monitor SMB y worker FIFO activos.
 > Cambios 2026-08-19 (3): limpieza de datos de prueba en produccion (16 expense_records + 6 usuarios test_* borrados; prod queda en estado canonico: 2 usuarios, 8 records) + aislamiento de tests. CAUSA RAIZ: tests/conftest.py apuntaba por defecto a la BD de produccion y .envrc inyecta credenciales reales (GASTOSIA_USE_ADMIN_DB=true -> tests corrian como superusuario postgres). FIX: conftest fuerza GASTOSIA_DATABASE_NAME a gastos_ia_test (nueva BD en el mismo servidor, esquema via alembic; override con GASTOSIA_TEST_DATABASE_NAME, escape con GASTOSIA_ALLOW_PROD_TESTS=1). Nueva migracion a1b2c3d4e5f6 (catalog_cache.parent_id, IF NOT EXISTS — alinea drift: la columna existia en prod y modelos pero no en initial_schema). Fix migrations/env.py: quote_plus en credenciales + escape %% para configparser (el password con @ rompia alembic). Verificado: 220 tests pass contra gastos_ia_test, prod intacta tras la corrida. Sin llamadas reales a Gemini/Kimi/Sheets en ningun momento (todo mockeado).
 > Cambios 2026-08-17: incidente IP host cerrado — VM usa 192.168.100.5 (vEthernet) para PostgreSQL y SMB; LAN/desarrollo usan 192.168.100.45. Ver tabla canonica en Infraestructura.
@@ -94,6 +95,8 @@ Cada error tiene un boton "Reenviar" que re-encola la imagen para reintentar la 
 | `templates/` | base, login, dashboard, expense_list, expense_detail, catalogs, history |
 
 ## Infraestructura
+
+> **OBSOLETA desde 2026-09-03** — la infraestructura descrita abajo (host Windows LENOVOSRV + VM Hyper-V) ya no existe. La referencia vigente es la entrada "Cambios 2026-09-03" al inicio: stack Docker en lenovosrv (192.168.100.24), `/srv/docker/gastos-ia/`. Se conserva como historial.
 
 ### IPs del host LENOVOSRV (canonico desde 2026-08-19)
 

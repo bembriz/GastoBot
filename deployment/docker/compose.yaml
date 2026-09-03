@@ -1,0 +1,58 @@
+name: gastos-ia
+
+services:
+  app:
+    build:
+      context: ./repo
+      dockerfile: deployment/docker/Dockerfile
+    image: gastos-ia-app:latest
+    container_name: gastos-ia-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - /mnt/warehouse/GastosIA:/data/gastos
+      - ./cred:/app/cred:ro
+    networks:
+      - gastos
+      - trading
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: gastos-ia-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    networks:
+      - gastos
+
+  samba:
+    image: servercontainers/samba:smbd-only-latest
+    container_name: gastos-ia-samba
+    restart: unless-stopped
+    ports:
+      - "139:139"
+      - "445:445"
+    environment:
+      ACCOUNT_ruben: ${SAMBA_RUBEN_PASSWORD}
+      ACCOUNT_esme: ${SAMBA_ESME_PASSWORD}
+      SAMBA_VOLUME_CONFIG_gastos: "[GastosIA]; path=/shares/gastos; valid users = ruben esme; guest ok = no; read only = no; browseable = yes"
+    volumes:
+      - /mnt/warehouse/GastosIA:/shares/gastos
+
+networks:
+  gastos:
+  trading:
+    external: true
+    name: self-evaluating-trading-agent_default
+
+volumes:
+  caddy_data:
+  caddy_config:
