@@ -9,15 +9,23 @@
             <div class="flex">
                 <input type="text" name="code" placeholder="Código" required style="flex:1;">
                 <input type="text" name="description" placeholder="Descripción" required style="flex:2;">
+                <select name="parent_id" style="flex:2;">
+                    <option value="">Sin cuenta padre</option>
+                    {% for a in accounts %}
+                    <option value="{{ a.id }}">{{ a.code }} - {{ a.description }}</option>
+                    {% endfor %}
+                </select>
                 <button type="submit" class="btn btn-primary">+</button>
             </div>
         </form>
         <div id="cat-msg"></div>
         <table>
             {% for c in categories %}
+            {% set parent = accounts_by_id.get(c.parent_id | string) %}
             <tr>
                 <td>{{ c.code }}</td>
                 <td>{{ c.description }}</td>
+                <td>{{ parent.code if parent else '—' }}</td>
                 <td>
                     <button class="btn" style="font-size:12px;"
                             hx-put="/catalogs/categoria/{{ c.id }}/toggle"

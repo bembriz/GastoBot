@@ -46,13 +46,15 @@ async def catalogs_page(request: Request, db: AsyncSession = Depends(get_db)) ->
         .where(CatalogCache.catalog_type == "cuenta")
         .order_by(CatalogCache.code)
     )
+    acc_list = accs.scalars().all()
     return HTMLResponse(
         render(
             "catalogs.html",
             request=request,
             user=user,
             categories=cats.scalars().all(),
-            accounts=accs.scalars().all(),
+            accounts=acc_list,
+            accounts_by_id={str(a.id): a for a in acc_list},
         )
     )
 
@@ -61,11 +63,22 @@ async def catalogs_page(request: Request, db: AsyncSession = Depends(get_db)) ->
 async def create_category(
     code: str = Form(...),
     description: str = Form(...),
+    parent_id: str = Form(""),
     user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> HTMLResponse:
+    parent_uuid = None
+    if parent_id:
+        try:
+            parent_uuid = uuid.UUID(parent_id)
+        except ValueError:
+            return HTMLResponse("Cuenta padre invalida", status_code=400)
     cat = CatalogCache(
-        id=uuid.uuid4(), catalog_type="categoria", code=code.upper(), description=description
+        id=uuid.uuid4(),
+        catalog_type="categoria",
+        code=code.upper(),
+        description=description,
+        parent_id=parent_uuid,
     )
     db.add(cat)
     await db.commit()

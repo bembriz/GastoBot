@@ -13,6 +13,11 @@ Idempotente: omite registros cuyo image_hash ya existe.
 Ejecutar dentro del contenedor app:
   docker exec gastos-ia-app uv run --no-sync \
       python scripts/migration/import_from_sheets.py [--dry-run]
+
+Para reparar solo los vinculos categoria->cuenta (parent_id) en una BD ya
+migrada, sin tocar registros:
+  docker exec gastos-ia-app uv run --no-sync \
+      python scripts/migration/import_from_sheets.py --catalogs-only [--dry-run]
 """
 
 import argparse
@@ -112,18 +117,20 @@ def read_catalogo_rows(path: Path) -> list[tuple[str, str]]:
 
 
 async def seed_catalogs(db: AsyncSession, dry_run: bool) -> dict[str, uuid.UUID]:
-    """Siembra catalogos desde Catalogo.xlsx. Devuelve mapa descripcion -> id."""
-    mapping: dict[str, uuid.UUID] = {}
+    """Siembra catalogos desde Catalogo.xlsx. Devuelve mapa descripcion -> id.
 
+    Cada par (categoria, cuenta) del xlsx liga la categoria a su cuenta via
+    parent_id. Al re-ejecutar sobre una BD ya sembrada repara (backfill) los
+    parent_id faltantes o distintos.
+    """
     result = await db.execute(select(CatalogCache))
-    for entry in result.scalars():
-        mapping[entry.description] = entry.id
+    entries = {e.description: e for e in result.scalars()}
+    mapping: dict[str, uuid.UUID] = {d: e.id for d, e in entries.items()}
 
-    created = 0
-    used_codes: set[tuple[str, str]] = {
-        (e.catalog_type, e.code) for e in (await db.execute(select(CatalogCache))).scalars()
-    }
-    for cat_str, acc_str in read_catalogo_rows(CATALOGO_PATH):
+    created = linked = 0
+    used_codes: set[tuple[str, str]] = {(e.catalog_type, e.code) for e in entries.values()}
+    pairs = read_catalogo_rows(CATALOGO_PATH)
+    for cat_str, acc_str in pairs:
         for catalog_type, full in (("categoria", cat_str), ("cuenta", acc_str)):
             if full in mapping:
                 continue
@@ -143,13 +150,22 @@ async def seed_catalogs(db: AsyncSession, dry_run: bool) -> dict[str, uuid.UUID]
                 id=uuid.uuid4(), catalog_type=catalog_type, code=code, description=full
             )
             mapping[full] = entry.id
+            entries[full] = entry
             created += 1
             if not dry_run:
                 db.add(entry)
 
+    for cat_str, acc_str in pairs:
+        cat_entry, acc_entry = entries.get(cat_str), entries.get(acc_str)
+        if cat_entry and acc_entry and cat_entry.parent_id != acc_entry.id:
+            cat_entry.parent_id = acc_entry.id
+            linked += 1
+
     if not dry_run:
         await db.flush()
-    print(f"[catalogos] {created} entradas nuevas, {len(mapping)} totales")
+    print(
+        f"[catalogos] {created} entradas nuevas, {linked} vinculos padre, {len(mapping)} totales"
+    )
     return mapping
 
 
@@ -357,12 +373,13 @@ async def import_month_tabs(
     return inserted, skipped, linked
 
 
-async def main(dry_run: bool) -> int:
+async def main(dry_run: bool, catalogs_only: bool) -> int:
     async with async_session() as db:
         catalogs = await seed_catalogs(db, dry_run)
-        users = await load_users(db)
-        await import_control_tab(db, users, dry_run)
-        await import_month_tabs(db, users, catalogs, dry_run)
+        if not catalogs_only:
+            users = await load_users(db)
+            await import_control_tab(db, users, dry_run)
+            await import_month_tabs(db, users, catalogs, dry_run)
         if dry_run:
             await db.rollback()
             print("\n[dry-run] Sin cambios en la BD")
@@ -375,5 +392,10 @@ async def main(dry_run: bool) -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--catalogs-only",
+        action="store_true",
+        help="Solo siembra/repara catalogos (parent_id); no importa registros",
+    )
     args = parser.parse_args()
-    sys.exit(asyncio.run(main(args.dry_run)))
+    sys.exit(asyncio.run(main(args.dry_run, args.catalogs_only)))

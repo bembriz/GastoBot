@@ -76,11 +76,9 @@
                     <select name="category_id" id="category-select">
                         <option value="">--</option>
                         {% for cat in categories %}
-                        {% if not record.account_id or cat.parent_id == record.account_id %}
                         <option value="{{ cat.id }}" {% if record.category_id == cat.id %}selected{% endif %}>
                             {{ cat.description }}
                         </option>
-                        {% endif %}
                         {% endfor %}
                     </select>
                 </div>

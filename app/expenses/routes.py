@@ -192,6 +192,15 @@ async def expense_detail(
         select(CatalogCache).where(CatalogCache.catalog_type == "cuenta", CatalogCache.is_active)
     )
 
+    all_categories = cats.scalars().all()
+    if record.account_id:
+        filtered = [c for c in all_categories if c.parent_id == record.account_id]
+        # Sin parent_id poblado en el catalogo no habria coincidencias;
+        # en ese caso mostrar todas para no dejar el combo vacio.
+        categories = filtered or list(all_categories)
+    else:
+        categories = list(all_categories)
+
     extraction_error = None
     if record.status == "ERROR_PROCESAMIENTO":
         err_result = await db.execute(
@@ -210,7 +219,7 @@ async def expense_detail(
             request=request,
             user=user,
             record=record,
-            categories=cats.scalars().all(),
+            categories=categories,
             accounts=accounts.scalars().all(),
             extraction_error=extraction_error,
         )
@@ -262,6 +271,16 @@ async def categories_by_account(
 
     cats_result = await db.execute(q)
     cats = cats_result.scalars().all()
+
+    if not cats and account_id and account_id != "0":
+        # La cuenta no tiene categorias ligadas (parent_id sin poblar);
+        # devolver todas las activas para no dejar el combo vacio.
+        fallback = await db.execute(
+            select(CatalogCache)
+            .where(CatalogCache.catalog_type == "categoria", CatalogCache.is_active)
+            .order_by(CatalogCache.description)
+        )
+        cats = fallback.scalars().all()
 
     options = ['<option value="">--</option>']
     for c in cats:
