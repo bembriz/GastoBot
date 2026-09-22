@@ -116,57 +116,106 @@ def read_catalogo_rows(path: Path) -> list[tuple[str, str]]:
     return rows
 
 
-async def seed_catalogs(db: AsyncSession, dry_run: bool) -> dict[str, uuid.UUID]:
-    """Siembra catalogos desde Catalogo.xlsx. Devuelve mapa descripcion -> id.
+async def seed_catalogs(
+    db: AsyncSession, dry_run: bool
+) -> tuple[dict[tuple[str, str], uuid.UUID], dict[str, uuid.UUID]]:
+    """Siembra catalogos desde Catalogo.xlsx.
 
-    Cada par (categoria, cuenta) del xlsx liga la categoria a su cuenta via
-    parent_id. Al re-ejecutar sobre una BD ya sembrada repara (backfill) los
-    parent_id faltantes o distintos.
+    Cada par (categoria, cuenta) del xlsx crea una entrada de categoria con
+    parent_id apuntando a la cuenta.  Categorias que pertenecen a multiples
+    cuentas obtienen una entrada distinta por cuenta, con descripcion unica
+    (se anexa la cuenta cuando hay duplicados).
+
+    Devuelve:
+      - cat_mapping: (descripcion_categoria_raw, descripcion_cuenta) -> id de categoria
+      - acc_mapping: descripcion_cuenta -> id de cuenta
     """
     result = await db.execute(select(CatalogCache))
-    entries = {e.description: e for e in result.scalars()}
-    mapping: dict[str, uuid.UUID] = {d: e.id for d, e in entries.items()}
+    existing = {e.description: e for e in result.scalars()}
 
+    cat_entries: dict[str, CatalogCache] = {}  # description -> entry
+    acc_entries: dict[str, CatalogCache] = {}
+    for e in existing.values():
+        if e.catalog_type == "categoria":
+            cat_entries[e.description] = e
+        else:
+            acc_entries[e.description] = e
+
+    cat_mapping: dict[tuple[str, str], uuid.UUID] = {}
+    acc_mapping: dict[str, uuid.UUID] = {}
     created = linked = 0
-    used_codes: set[tuple[str, str]] = {(e.catalog_type, e.code) for e in entries.values()}
+    used_codes: set[tuple[str, str]] = {(e.catalog_type, e.code) for e in existing.values()}
     pairs = read_catalogo_rows(CATALOGO_PATH)
-    for cat_str, acc_str in pairs:
-        for catalog_type, full in (("categoria", cat_str), ("cuenta", acc_str)):
-            if full in mapping:
-                continue
-            if catalog_type == "categoria":
-                m = re.match(r"\[(.*?)\]\s*(.*)", full)
-                code = m.group(1) if m else full
-            else:
-                code = full.split(" ", 1)[0]
-            code = code[:50]
-            suffix = 2  # codigo truncado a varchar(50); evitar colisiones
-            while (catalog_type, code) in used_codes:
-                tail = f"~{suffix}"
-                code = f"{code[: 50 - len(tail)]}{tail}"
-                suffix += 1
-            used_codes.add((catalog_type, code))
-            entry = CatalogCache(
-                id=uuid.uuid4(), catalog_type=catalog_type, code=code, description=full
-            )
-            mapping[full] = entry.id
-            entries[full] = entry
-            created += 1
-            if not dry_run:
-                db.add(entry)
 
+    # Create accounts first
+    for _, acc_str in pairs:
+        if acc_str in acc_entries:
+            acc_mapping[acc_str] = acc_entries[acc_str].id
+            continue
+        code = acc_str.split(" ", 1)[0][:50]
+        suffix = 2
+        while ("cuenta", code) in used_codes:
+            tail = f"~{suffix}"
+            code = f"{code[: 50 - len(tail)]}{tail}"
+            suffix += 1
+        used_codes.add(("cuenta", code))
+        entry = CatalogCache(id=uuid.uuid4(), catalog_type="cuenta", code=code, description=acc_str)
+        acc_entries[acc_str] = entry
+        acc_mapping[acc_str] = entry.id
+        created += 1
+        if not dry_run:
+            db.add(entry)
+
+    # Determine which categories need unique descriptions (multi-account)
+    cat_account_map: dict[str, set[str]] = {}
     for cat_str, acc_str in pairs:
-        cat_entry, acc_entry = entries.get(cat_str), entries.get(acc_str)
-        if cat_entry and acc_entry and cat_entry.parent_id != acc_entry.id:
-            cat_entry.parent_id = acc_entry.id
-            linked += 1
+        cat_account_map.setdefault(cat_str, set()).add(acc_str)
+
+    def cat_description(cat_str: str, acc_str: str) -> str:
+        if len(cat_account_map.get(cat_str, set())) > 1:
+            return f"{cat_str} ({acc_str})"
+        return cat_str
+
+    # Create categories per (category, account) pair
+    for cat_str, acc_str in pairs:
+        desc = cat_description(cat_str, acc_str)
+        if desc in cat_entries:
+            cat_entry = cat_entries[desc]
+            if cat_entry.parent_id != acc_entries[acc_str].id:
+                cat_entry.parent_id = acc_entries[acc_str].id
+                linked += 1
+            cat_mapping[(cat_str, acc_str)] = cat_entry.id
+            continue
+
+        m = re.match(r"\[(.*?)\]\s*(.*)", cat_str)
+        code = m.group(1) if m else cat_str
+        code = code[:50]
+        suffix = 2
+        while ("categoria", code) in used_codes:
+            tail = f"~{suffix}"
+            code = f"{code[: 50 - len(tail)]}{tail}"
+            suffix += 1
+        used_codes.add(("categoria", code))
+        entry = CatalogCache(
+            id=uuid.uuid4(),
+            catalog_type="categoria",
+            code=code,
+            description=desc,
+            parent_id=acc_entries[acc_str].id,
+        )
+        cat_entries[desc] = entry
+        cat_mapping[(cat_str, acc_str)] = entry.id
+        created += 1
+        if not dry_run:
+            db.add(entry)
 
     if not dry_run:
         await db.flush()
     print(
-        f"[catalogos] {created} entradas nuevas, {linked} vinculos padre, {len(mapping)} totales"
+        f"[catalogos] {created} entradas nuevas, {linked} vinculos padre, "
+        f"{len(cat_entries)} categorias, {len(acc_entries)} cuentas"
     )
-    return mapping
+    return cat_mapping, acc_mapping
 
 
 async def load_users(db: AsyncSession) -> dict[str, User]:
@@ -263,12 +312,16 @@ def scan_procesados() -> dict[str, list[tuple[Path, str]]]:
 
 
 async def import_month_tabs(
-    db: AsyncSession, users: dict[str, User], catalogs: dict[str, uuid.UUID], dry_run: bool
+    db: AsyncSession,
+    users: dict[str, User],
+    catalogs: tuple[dict[tuple[str, str], uuid.UUID], dict[str, uuid.UUID]],
+    dry_run: bool,
 ) -> tuple[int, int, int]:
     """Importa pestanas Mes-AA. Devuelve (insertados, omitidos, imagenes vinculadas)."""
     sh = get_spreadsheet()
     procesados = scan_procesados()
     inserted = skipped = linked = collisions = 0
+    cat_map, acc_map = catalogs
 
     result = await db.execute(
         select(ExpenseRecord.group_code, ExpenseRecord.consecutive).where(
@@ -316,8 +369,8 @@ async def import_month_tabs(
                 final_description=desc.strip() or None,
                 group_code=group_code,
                 consecutive=consecutive,
-                category_id=catalogs.get(categoria.strip()),
-                account_id=catalogs.get(cuenta.strip()),
+                category_id=cat_map.get((categoria.strip(), cuenta.strip())),
+                account_id=acc_map.get(cuenta.strip()),
                 bank=banco.strip() or None,
                 transaction_type=parse_transaction_type(transaccion),
                 status="ENVIADO",
