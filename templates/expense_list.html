@@ -19,8 +19,7 @@
         {% set can_send = r.transaction_date and r.amount and r.bank and r.group_code and r.category_id and r.account_id %}
         <tr>
             <td><input type="checkbox" class="chk-record" name="record_ids" value="{{ r.id }}"
-                       data-status="{{ 'ready' if can_send else 'incomplete' }}"
-                       {% if not can_send %}disabled{% endif %}></td>
+                       data-status="{{ 'ready' if can_send else 'incomplete' }}"></td>
             <td>{{ r.source_filename or '-' }}</td>
             <td>{{ r.transaction_date or '-' }}</td>
             <td>{% if r.amount %}${{ "%.2f"|format(r.amount) }}{% else %}-{% endif %}</td>

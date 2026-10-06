@@ -74,6 +74,7 @@ class TestSendExpense:
         acc_mock.description = "ACC001"
 
         mock_db = AsyncMock()
+        mock_db.add = MagicMock()
         mock_db.execute = AsyncMock()
         mock_db.execute.side_effect = [
             _scalar_result(record),
@@ -121,6 +122,7 @@ class TestSendExpense:
         acc_mock.description = "ACC001"
 
         mock_db = AsyncMock()
+        mock_db.add = MagicMock()
         mock_db.execute = AsyncMock()
         mock_db.execute.side_effect = [
             _scalar_result(record),
@@ -147,12 +149,14 @@ class TestSendExpense:
             result = await send_expense(RECORD_ID, "BORAMAR")
 
             assert result["success"] is False
-            assert record.status == "PENDIENTE_DE_ENVIO"
+            assert record.status == "ERROR_SHEETS"
+            assert "API error" in result["error"]
 
     async def test_catalog_not_found_uses_empty_strings(self):
         record = _fake_record()
 
         mock_db = AsyncMock()
+        mock_db.add = MagicMock()
         mock_db.execute = AsyncMock()
         mock_db.execute.side_effect = [
             _scalar_result(record),

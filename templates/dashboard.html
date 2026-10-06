@@ -5,15 +5,30 @@
         {% if user.role == 'admin' %}Todos los comprobantes{% else %}Mis comprobantes{% endif %}
         <span class="poll-indicator">&#9679; actualizando</span>
     </h2>
-    <button id="bulk-send-btn" class="btn btn-primary" disabled
-            hx-post="/expenses/bulk-send"
-            hx-target="#bulk-result"
-            hx-swap="innerHTML"
-            hx-include=".chk-record:checked">
-        Enviar seleccionados a Sheets
-    </button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+        <button id="bulk-delete-btn" class="btn btn-danger" disabled
+                hx-post="/expenses/bulk-delete"
+                hx-target="#bulk-result"
+                hx-swap="innerHTML"
+                hx-include=".chk-record:checked"
+                hx-confirm="Eliminar los comprobantes seleccionados de PostgreSQL? Esta accion no borra imagenes."
+                hx-indicator="#bulk-indicator">
+            Eliminar seleccionados
+        </button>
+        <button id="bulk-send-btn" class="btn btn-primary" disabled
+                hx-post="/expenses/bulk-send"
+                hx-target="#bulk-result"
+                hx-swap="innerHTML"
+                hx-include=".chk-record:checked"
+                hx-indicator="#bulk-indicator">
+            Enviar seleccionados a Sheets
+        </button>
+    </div>
 </div>
-<div id="bulk-result" style="margin-bottom:8px;"></div>
+<div id="bulk-indicator" class="htmx-indicator" style="margin-bottom:8px;color:var(--primary);">
+    Procesando registros seleccionados...
+</div>
+<div id="bulk-result" style="margin-bottom:8px;" aria-live="polite"></div>
 
 <div id="expense-list" hx-get="/dashboard/status" hx-trigger="every 3s" hx-swap="innerHTML">
     <p>Cargando comprobantes...</p>
@@ -26,7 +41,6 @@
     var selectedIds = new Set();
     document.body.addEventListener('htmx:afterSettle', function() {
         var checks = document.querySelectorAll('.chk-record');
-        var btn = document.getElementById('bulk-send-btn');
         checks.forEach(function(c) {
             if (selectedIds.has(c.value)) {
                 c.checked = true;
@@ -41,7 +55,7 @@
                     selectedIds.delete(c.value);
                 }
                 c.closest('tr')?.classList.toggle('row-selected', c.checked);
-                updateBulkBtn();
+                updateBulkButtons();
             });
         });
         var all = document.getElementById('select-all');
@@ -55,28 +69,82 @@
                         c.closest('tr')?.classList.toggle('row-selected', c.checked);
                     }
                 });
-                updateBulkBtn();
+                updateBulkButtons();
             });
         }
-        updateBulkBtn();
+        updateBulkButtons();
     });
 
-    function updateBulkBtn() {
-        var btn = document.getElementById('bulk-send-btn');
-        if (!btn) return;
+    function updateBulkButtons() {
+        var sendBtn = document.getElementById('bulk-send-btn');
+        var deleteBtn = document.getElementById('bulk-delete-btn');
         var anyReady = false;
+        var anySelected = false;
         document.querySelectorAll('.chk-record:checked').forEach(function(c) {
+            anySelected = true;
             if (c.dataset.status === 'ready') anyReady = true;
         });
-        btn.disabled = !anyReady;
+        if (sendBtn) sendBtn.disabled = !anyReady;
+        if (deleteBtn) deleteBtn.disabled = !anySelected;
     }
 
     document.body.addEventListener('htmx:afterRequest', function(evt) {
         if (evt.detail.target.id === 'bulk-result') {
-            selectedIds.clear();
-            var checks = document.querySelectorAll('.chk-record');
-            checks.forEach(function(c) { c.checked = false; });
-            updateBulkBtn();
+            if (evt.detail.successful) {
+                selectedIds.clear();
+                var checks = document.querySelectorAll('.chk-record');
+                checks.forEach(function(c) { c.checked = false; });
+            }
+            updateBulkButtons();
+        }
+    });
+
+    document.body.addEventListener('htmx:beforeRequest', function(evt) {
+        if (evt.detail.target.id === 'bulk-result') {
+            var btn = evt.detail.elt;
+            if (btn) {
+                btn.disabled = true;
+                btn.dataset.originalText = btn.textContent;
+                btn.textContent = btn.id === 'bulk-delete-btn' ? 'Eliminando...' : 'Enviando...';
+            }
+            var result = document.getElementById('bulk-result');
+            var message = btn && btn.id === 'bulk-delete-btn' ? 'Preparando eliminacion...' : 'Preparando envio...';
+            if (result) result.innerHTML = '<span style="color:var(--primary);">' + message + '</span>';
+        }
+    });
+
+    document.body.addEventListener('htmx:afterRequest', function(evt) {
+        if (evt.detail.target.id === 'bulk-result') {
+            var btn = evt.detail.elt;
+            if (btn && btn.dataset.originalText) {
+                btn.textContent = btn.dataset.originalText;
+                delete btn.dataset.originalText;
+            }
+            updateBulkButtons();
+        }
+    });
+
+    function showBulkError(message) {
+        var result = document.getElementById('bulk-result');
+        if (result) result.innerHTML = '<span class="error">' + message + '</span>';
+    }
+
+    document.body.addEventListener('htmx:responseError', function(evt) {
+        if (evt.detail.target.id === 'bulk-result') {
+            var text = evt.detail.xhr.responseText || 'No se pudo enviar a Sheets. Revisa conexion y vuelve a intentar.';
+            showBulkError(text);
+        }
+    });
+
+    document.body.addEventListener('htmx:sendError', function(evt) {
+        if (evt.detail.target.id === 'bulk-result') {
+            showBulkError('No se pudo contactar el servidor. Revisa la conexion local e intenta de nuevo.');
+        }
+    });
+
+    document.body.addEventListener('htmx:timeout', function(evt) {
+        if (evt.detail.target.id === 'bulk-result') {
+            showBulkError('El envio a Sheets esta tardando demasiado. Verifica si el registro se envio antes de reintentar.');
         }
     });
 </script>

@@ -407,7 +407,7 @@ class TestExpensesWithRecord:
         client.cookies.set(COOKIE_NAME, cookie)
 
         r = client.post("/expenses/bulk-send", data={"record_ids": []})
-        assert r.status_code in (200, 422)
+        assert r.status_code in (400, 422)
 
     def test_bulk_send_with_invalid_id(self, client, _test_users_setup, test_admin_user):
         from unittest.mock import AsyncMock, patch

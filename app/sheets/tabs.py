@@ -50,9 +50,19 @@ def ensure_month_tab(sheet_name: str) -> int:
     try:
         ws = sh.worksheet(sheet_name)
     except Exception:
-        ws = sh.add_worksheet(title=sheet_name, rows=100, cols=16)
-        ws.append_row(COLUMNAS)
-        time.sleep(1)
+        try:
+            ws = sh.add_worksheet(title=sheet_name, rows=100, cols=16)
+            ws.append_row(COLUMNAS)
+            time.sleep(1)
+        except Exception as exc:
+            if "already exists" not in str(exc):
+                raise
+            for existing_ws in sh.worksheets():
+                if existing_ws.title == sheet_name:
+                    ws = existing_ws
+                    break
+            else:
+                raise
     return ws.id
 
 

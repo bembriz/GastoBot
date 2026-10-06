@@ -122,6 +122,6 @@ async def send_expense(record_id: str, group_code: str) -> dict[str, Any]:
             }
 
         except Exception as e:
-            record.status = "PENDIENTE_DE_ENVIO"
+            record.status = "ERROR_SHEETS"
             await db.commit()
             return {"success": False, "error": str(e)[:200]}

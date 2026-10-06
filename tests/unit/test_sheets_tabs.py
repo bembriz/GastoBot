@@ -55,6 +55,25 @@ class TestEnsureMonthTab:
             mock_sh.add_worksheet.assert_called_once()
             mock_ws.append_row.assert_called_once_with(COLUMNAS)
 
+    def test_duplicate_add_uses_existing_worksheet(self):
+        with patch("app.sheets.tabs.get_spreadsheet") as mock_gs:
+            mock_sh = MagicMock()
+            mock_sh.worksheet.side_effect = Exception("not found")
+            mock_sh.add_worksheet.side_effect = Exception(
+                "APIError: [400]: Invalid requests[0].addSheet: "
+                'A sheet with the name "Julio-26" already exists.'
+            )
+            mock_ws = MagicMock()
+            mock_ws.id = 26072
+            mock_ws.title = "Julio-26"
+            mock_sh.worksheets.return_value = [mock_ws]
+            mock_gs.return_value = mock_sh
+
+            ws_id = ensure_month_tab("Julio-26")
+
+            assert ws_id == 26072
+            mock_ws.append_row.assert_not_called()
+
 
 class TestFindNextEmptyRow:
     def test_empty_sheet(self):

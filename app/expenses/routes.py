@@ -2,11 +2,11 @@
 
 import os
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from starlette.responses import Response
@@ -14,11 +14,13 @@ from starlette.responses import Response
 from app.auth.permissions import get_current_user
 from app.auth.session import session_cookie_name, verify_session
 from app.database.models import (
+    AuditEvent,
     CatalogCache,
     ExpenseRecord,
     ExtractionRun,
     ImageFile,
     ProcessingQueue,
+    SheetSync,
     User,
 )
 from app.database.session import get_db
@@ -26,6 +28,33 @@ from app.sheets.sender import send_expense as send_expense_to_sheets
 from app.templates import render
 
 router = APIRouter()
+
+SHEETS_STUCK_AFTER = timedelta(minutes=15)
+
+
+def _as_aware_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _is_stuck_sheets_send(record: ExpenseRecord, now: datetime | None = None) -> bool:
+    if record.status != "ENVIANDO":
+        return False
+    if record.sheet_name and record.sheet_row and record.sent_at:
+        return False
+    reference_time = _as_aware_utc(record.updated_at) or _as_aware_utc(record.created_at)
+    if reference_time is None:
+        return True
+    current_time = now or datetime.now(UTC)
+    return current_time - reference_time >= SHEETS_STUCK_AFTER
+
+
+def _bulk_message(message: str, css_class: str = "") -> str:
+    class_attr = f' class="{css_class}"' if css_class else ""
+    return f"<span{class_attr}>{message}</span>"
 
 
 async def get_user(request: Request, db: AsyncSession) -> User | None:
@@ -81,6 +110,7 @@ async def dashboard_status(request: Request, db: AsyncSession = Depends(get_db))
         "ANALIZANDO",
         "REQUIERE_REVISION",
         "PENDIENTE_DE_ENVIO",
+        "ERROR_SHEETS",
         "DUPLICADO_PROBABLE",
     ]
 
@@ -418,10 +448,16 @@ async def retry_expense(
 
 @router.post("/expenses/bulk-send")
 async def bulk_send_expenses(
-    record_ids: list[str] = Form(...),
+    record_ids: list[str] | None = Form(None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> HTMLResponse:
+    if not record_ids:
+        return HTMLResponse(
+            _bulk_message("Selecciona al menos un comprobante para enviar.", "error"),
+            status_code=400,
+        )
+
     results = []
     for rid in record_ids:
         record = (
@@ -430,6 +466,12 @@ async def bulk_send_expenses(
         if not record:
             results.append(f"<span class='error'>{rid[:8]}... no encontrado</span>")
             continue
+        if user.role != "admin" and record.owner_id != user.id:
+            results.append(f"<span class='error'>{record.source_filename}: no autorizado</span>")
+            continue
+        if _is_stuck_sheets_send(record):
+            record.status = "PENDIENTE_DE_ENVIO"
+            await db.commit()
         if not all(
             [
                 record.transaction_date,
@@ -461,5 +503,46 @@ async def bulk_send_expenses(
                 )
         except Exception as e:
             results.append(f"<span class='error'>{record.source_filename}: {e}</span>")
+
+    return HTMLResponse("<br>".join(results))
+
+
+async def _delete_expense_record(db: AsyncSession, record: ExpenseRecord) -> None:
+    await db.execute(delete(SheetSync).where(SheetSync.record_id == record.id))
+    await db.execute(delete(AuditEvent).where(AuditEvent.record_id == record.id))
+    await db.execute(delete(ImageFile).where(ImageFile.record_id == record.id))
+    await db.execute(delete(ProcessingQueue).where(ProcessingQueue.record_id == record.id))
+    await db.execute(delete(ExtractionRun).where(ExtractionRun.record_id == record.id))
+    await db.delete(record)
+
+
+@router.post("/expenses/bulk-delete", response_class=HTMLResponse)
+async def bulk_delete_expenses(
+    record_ids: list[str] | None = Form(None),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> HTMLResponse:
+    if not record_ids:
+        return HTMLResponse(
+            _bulk_message("Selecciona al menos un comprobante para eliminar.", "error"),
+            status_code=400,
+        )
+
+    results = []
+    for rid in record_ids:
+        record = (
+            await db.execute(select(ExpenseRecord).where(ExpenseRecord.id == rid))
+        ).scalar_one_or_none()
+        if not record:
+            results.append(f"<span class='error'>{rid[:8]}... no encontrado</span>")
+            continue
+        if user.role != "admin" and record.owner_id != user.id:
+            results.append(f"<span class='error'>{record.source_filename}: no autorizado</span>")
+            continue
+
+        filename = record.source_filename or str(record.id)
+        await _delete_expense_record(db, record)
+        await db.commit()
+        results.append(f"<span style='color:var(--success);'>{filename}: eliminado</span>")
 
     return HTMLResponse("<br>".join(results))

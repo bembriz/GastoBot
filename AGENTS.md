@@ -317,6 +317,37 @@ Para cada skill en la fase:
 
 ---
 
+## Pruebas Locales PostgreSQL Antes de Despliegue
+
+Cuando necesites probar cambios de base de datos, rutas que escriben en PostgreSQL, o flujos previos al despliegue a `lenovosrv`, usa el contenedor local **`local-postgres-lab`**. No uses `gastos_ia` de producción para pruebas locales.
+
+En `lenovosrv` debe existir **un único contenedor PostgreSQL** para este entorno. Si durante diagnóstico o despliegue encuentras más de un contenedor PostgreSQL en `lenovosrv`, detente y avisa al usuario antes de continuar.
+
+Configuración canónica de pruebas locales:
+
+- **Contenedor Docker:** `local-postgres-lab`
+- **Puerto publicado:** `127.0.0.1:5434`
+- **Base aislada:** `gastos_ia_opencode_delete_test`
+- **Rol local de prueba:** `gastosia_opencode`
+- **Datos sintéticos:** usar prefijo `opencode-delete-test-` y limpiar al terminar
+- **Extracción IA:** no invocar Gemini, Kimi, Ollama ni procesamiento real de imágenes para estas pruebas
+
+Antes de ejecutar pruebas locales, verifica o recrea la base aislada dentro del contenedor con un password local efímero por variable de entorno; no lo escribas en archivos versionados. Después apunta la app/tests con:
+
+```bash
+GASTOSIA_DATABASE_HOST=127.0.0.1
+GASTOSIA_DATABASE_PORT=5434
+GASTOSIA_DATABASE_NAME=gastos_ia_opencode_delete_test
+GASTOSIA_TEST_DATABASE_NAME=gastos_ia_opencode_delete_test
+GASTOSIA_DATABASE_USER=gastosia_opencode
+GASTOSIA_DATABASE_PASSWORD=<password-local-efimero>
+GASTOSIA_USE_ADMIN_DB=
+```
+
+Si el rol/base no existen, créalos con `sudo -n docker exec local-postgres-lab ...` y aplica `uv run alembic upgrade head` apuntando explícitamente a esa base. Al finalizar, confirma que no queden filas con prefijo `opencode-delete-test-`.
+
+---
+
 ## Instrucciones de Inicio
 
 1. Verifica que estás en la rama `arnes`: `git branch --show-current`
