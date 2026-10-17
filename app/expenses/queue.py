@@ -28,7 +28,11 @@ STALE_TIMEOUT_SECONDS = 600
 def _move_to_procesados(original_path: str, owner_folder: str) -> str | None:
     try:
         src_dir = os.path.dirname(original_path)
-        procesados_dir = os.path.join(os.path.dirname(src_dir), "procesados")
+        # GASTOSIA_PROCESSED_DIR permite fijar el destino (p. ej. unidad
+        # secundaria en lenovosrv). Si no se define, se conserva el
+        # comportamiento historico: hermano de la carpeta del dueño.
+        configured_dir = os.environ.get("GASTOSIA_PROCESSED_DIR", "").strip()
+        procesados_dir = configured_dir or os.path.join(os.path.dirname(src_dir), "procesados")
         os.makedirs(procesados_dir, exist_ok=True)
         filename = os.path.basename(original_path)
         dst = os.path.join(procesados_dir, filename)

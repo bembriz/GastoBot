@@ -305,9 +305,10 @@ class TestProcessJob:
 
 
 class TestMoveToProcesados:
-    def test_moves_file_successfully(self, tmp_path):
+    def test_moves_file_successfully(self, tmp_path, monkeypatch):
         from app.expenses.queue import _move_to_procesados
 
+        monkeypatch.delenv("GASTOSIA_PROCESSED_DIR", raising=False)
         pendientes = tmp_path / "Ruben" / "pendientes"
         pendientes.mkdir(parents=True)
         src = pendientes / "test.jpg"
@@ -319,9 +320,25 @@ class TestMoveToProcesados:
         assert procesados.exists()
         assert not src.exists()
 
-    def test_missing_file_no_error(self):
+    def test_uses_configured_processed_dir(self, tmp_path, monkeypatch):
         from app.expenses.queue import _move_to_procesados
 
+        configured = tmp_path / "unidad-secundaria" / "procesados"
+        monkeypatch.setenv("GASTOSIA_PROCESSED_DIR", str(configured))
+        pendientes = tmp_path / "Ruben" / "pendientes"
+        pendientes.mkdir(parents=True)
+        src = pendientes / "test.jpg"
+        src.write_text("image data")
+
+        _move_to_procesados(str(src), "Ruben")
+
+        assert (configured / "test.jpg").exists()
+        assert not src.exists()
+
+    def test_missing_file_no_error(self, monkeypatch):
+        from app.expenses.queue import _move_to_procesados
+
+        monkeypatch.delenv("GASTOSIA_PROCESSED_DIR", raising=False)
         _move_to_procesados("/nonexistent/file.jpg", "Ruben")
 
 

@@ -21,7 +21,7 @@
                 hx-swap="innerHTML"
                 hx-include=".chk-record:checked"
                 hx-indicator="#bulk-indicator">
-            Enviar seleccionados a Sheets
+            Enviar a BD
         </button>
     </div>
 </div>
@@ -105,10 +105,10 @@
             if (btn) {
                 btn.disabled = true;
                 btn.dataset.originalText = btn.textContent;
-                btn.textContent = btn.id === 'bulk-delete-btn' ? 'Eliminando...' : 'Enviando...';
+                btn.textContent = btn.id === 'bulk-delete-btn' ? 'Eliminando...' : 'Enviando a BD...';
             }
             var result = document.getElementById('bulk-result');
-            var message = btn && btn.id === 'bulk-delete-btn' ? 'Preparando eliminacion...' : 'Preparando envio...';
+            var message = btn && btn.id === 'bulk-delete-btn' ? 'Preparando eliminacion...' : 'Preparando envio a BD...';
             if (result) result.innerHTML = '<span style="color:var(--primary);">' + message + '</span>';
         }
     });
@@ -131,7 +131,7 @@
 
     document.body.addEventListener('htmx:responseError', function(evt) {
         if (evt.detail.target.id === 'bulk-result') {
-            var text = evt.detail.xhr.responseText || 'No se pudo enviar a Sheets. Revisa conexion y vuelve a intentar.';
+            var text = evt.detail.xhr.responseText || 'No se pudo enviar a la BD. Revisa conexion y vuelve a intentar.';
             showBulkError(text);
         }
     });
@@ -144,7 +144,7 @@
 
     document.body.addEventListener('htmx:timeout', function(evt) {
         if (evt.detail.target.id === 'bulk-result') {
-            showBulkError('El envio a Sheets esta tardando demasiado. Verifica si el registro se envio antes de reintentar.');
+            showBulkError('El envio a BD esta tardando demasiado. Verifica si el registro se envio antes de reintentar.');
         }
     });
 </script>
