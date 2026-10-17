@@ -92,18 +92,76 @@ class TestExpensesRoutes:
         )
         assert r.status_code == 404
 
-    def test_send_expense(self, client, _test_users_setup, test_admin_user):
+    def test_send_expense(self, client, _test_users_setup, test_admin_user, db_session):
+        from app.database.models import ExpenseRecord
+
+        async def _create():
+            record = ExpenseRecord(
+                owner_id=test_admin_user.id,
+                image_hash=f"sha_send_{uuid.uuid4().hex[:16]}",
+                status="PENDIENTE_DE_ENVIO",
+                source_filename="send_test.jpg",
+                group_code="VAL",
+            )
+            db_session.add(record)
+            await db_session.commit()
+            await db_session.refresh(record)
+            return record.id
+
+        import asyncio
+
+        rid = asyncio.get_event_loop().run_until_complete(_create())
         cookie = _make_cookie(test_admin_user.id, test_admin_user.username, test_admin_user.role)
         client.cookies.set(COOKIE_NAME, cookie)
         with patch(
-            "app.expenses.routes.send_expense_to_sheets",
+            "app.expenses.routes._dispatch_send",
             new=AsyncMock(return_value={"success": False, "error": "no encontrado"}),
         ):
             r = client.post(
-                f"/expenses/{uuid.uuid4()}/send",
+                f"/expenses/{rid}/send",
                 data={"group_code": "VAL"},
             )
             assert r.status_code == 200
+
+    def test_send_expense_404_for_missing_record(self, client, _test_users_setup, test_admin_user):
+        cookie = _make_cookie(test_admin_user.id, test_admin_user.username, test_admin_user.role)
+        client.cookies.set(COOKIE_NAME, cookie)
+        r = client.post(
+            f"/expenses/{uuid.uuid4()}/send",
+            data={"group_code": "VAL"},
+        )
+        assert r.status_code == 404
+
+    def test_send_expense_forbidden_for_other_user(
+        self, client, _test_users_setup, test_admin_user, test_standard_user, db_session
+    ):
+        from app.database.models import ExpenseRecord
+
+        async def _create():
+            record = ExpenseRecord(
+                owner_id=test_admin_user.id,
+                image_hash=f"sha_send_forbidden_{uuid.uuid4().hex[:16]}",
+                status="PENDIENTE_DE_ENVIO",
+                source_filename="send_forbidden.jpg",
+                group_code="VAL",
+            )
+            db_session.add(record)
+            await db_session.commit()
+            await db_session.refresh(record)
+            return record.id
+
+        import asyncio
+
+        rid = asyncio.get_event_loop().run_until_complete(_create())
+        cookie = _make_cookie(
+            test_standard_user.id, test_standard_user.username, test_standard_user.role
+        )
+        client.cookies.set(COOKIE_NAME, cookie)
+        r = client.post(
+            f"/expenses/{rid}/send",
+            data={"group_code": "VAL"},
+        )
+        assert r.status_code == 403
 
     def test_categories_by_account(self, client, _test_users_setup, test_admin_user):
         cookie = _make_cookie(test_admin_user.id, test_admin_user.username, test_admin_user.role)
@@ -304,6 +362,53 @@ class TestExpensesWithRecord:
 
         r = client.get(f"/images/{rid}/view")
         assert r.status_code == 200
+
+    def test_view_image_forbidden_for_other_user(
+        self, client, _test_users_setup, test_admin_user, test_standard_user, db_session
+    ):
+        from app.database.models import ExpenseRecord, ImageFile
+
+        hash_val = f"sha_view_forbidden_{uuid.uuid4().hex[:16]}"
+        import tempfile
+
+        img_path = tempfile.mktemp(suffix=".jpg")
+        from PIL import Image as PILImage
+
+        PILImage.new("RGB", (10, 10)).save(img_path)
+
+        async def _create():
+            record = ExpenseRecord(
+                owner_id=test_admin_user.id,
+                image_hash=hash_val,
+                status="REQUIERE_REVISION",
+                source_filename="view_forbidden.jpg",
+            )
+            db_session.add(record)
+            await db_session.flush()
+            db_session.add(
+                ImageFile(
+                    record_id=record.id,
+                    original_path=img_path,
+                    sha256_hash=hash_val,
+                    file_size=100,
+                    mime_type="image/jpeg",
+                    owner_folder="Ruben",
+                )
+            )
+            await db_session.commit()
+            await db_session.refresh(record)
+            return record.id
+
+        import asyncio
+
+        rid = asyncio.get_event_loop().run_until_complete(_create())
+        cookie = _make_cookie(
+            test_standard_user.id, test_standard_user.username, test_standard_user.role
+        )
+        client.cookies.set(COOKIE_NAME, cookie)
+
+        r = client.get(f"/images/{rid}/view")
+        assert r.status_code == 403
 
     def test_history_page_as_standard(self, client, _test_users_setup, test_standard_user):
         cookie = _make_cookie(

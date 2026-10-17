@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap;">
+    <h2 style="margin:0;">Detalle — {{ row.month_label }}</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <a href="/reports?month={{ row.month_label|urlencode }}" class="btn" style="background:var(--muted);color:#fff;text-decoration:none;">&larr; Regresar</a>
+        <a href="/reports/excel?month={{ row.month_label|urlencode }}" class="btn btn-primary" style="text-decoration:none;">Descargar Excel</a>
+    </div>
+</div>
+
+<div class="flex" style="gap:24px;flex-wrap:wrap;">
+    <div class="card" style="flex:1;min-width:320px;">
+        <table>
+            <tbody>
+                {% for label, value in fields %}
+                <tr>
+                    <th style="width:38%;">{{ label }}</th>
+                    <td>{{ value if value not in (none, '') else '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card" style="flex:1;min-width:320px;">
+        <h3 style="margin-bottom:12px;">Comprobante</h3>
+        {% if image_available and row.record_id %}
+        <img class="img-viewer" src="/expenses/{{ row.record_id }}/image" alt="Comprobante">
+        {% else %}
+        <p style="color:var(--muted);text-align:center;padding:40px 12px;">
+            Sin imagen disponible para este registro.
+        </p>
+        {% endif %}
+        <p style="color:var(--muted);font-size:12px;margin-top:12px;">
+            Origen: {{ row.source }}
+            {% if row.synced_at %}&nbsp;·&nbsp; Sincronizado: {{ row.synced_at }}{% endif %}
+            {% if row.group_code %}&nbsp;·&nbsp; Grupo: {{ row.group_code }}{% endif %}
+            {% if row.consecutive is not none %}-{{ row.consecutive }}{% endif %}
+        </p>
+    </div>
+</div>
+{% endblock %}

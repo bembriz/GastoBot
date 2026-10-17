@@ -10,7 +10,7 @@
         </div>
         <div style="margin-top:44px;overflow:auto;border:1px solid var(--border);border-radius:8px;min-height:300px;display:flex;align-items:center;justify-content:center;background:#f0f0f0;">
             {% if record.image_file %}
-            <img id="ticket-img" src="/images/{{ record.id }}/view"
+            <img id="ticket-img" src="/expenses/{{ record.id }}/image"
                  style="max-width:100%;display:block;transform:scale(1) rotate(0deg);transform-origin:center center;transition:transform 0.2s;">
             {% else %}
             <p style="color:var(--muted);">Imagen no disponible</p>

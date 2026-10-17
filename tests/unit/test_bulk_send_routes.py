@@ -99,8 +99,9 @@ async def test_bulk_send_recovers_stuck_enviando_before_retry(monkeypatch):
     user.role = "standard"
     user.id = "current-user"
 
+    monkeypatch.delenv("GASTOSIA_SEND_TARGET", raising=False)
     send_mock = AsyncMock(return_value={"success": True, "row": 7, "tab": "Octubre-26"})
-    monkeypatch.setattr("app.expenses.routes.send_expense_to_sheets", send_mock)
+    monkeypatch.setattr("app.expenses.routes.send_expense_to_postgres", send_mock)
 
     response = await bulk_send_expenses(record_ids=["record-1"], user=user, db=db)
 

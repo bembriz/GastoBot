@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap;">
+    <h2 style="margin:0;">Reportes por mes</h2>
+    {% if selected_month %}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <a href="/reports" class="btn" style="background:var(--muted);color:#fff;text-decoration:none;">&larr; Meses</a>
+        <a href="/reports/excel?month={{ selected_month|urlencode }}" class="btn btn-primary" style="text-decoration:none;">Descargar Excel {{ selected_month }}</a>
+    </div>
+    {% endif %}
+</div>
+
+{% if selected_month %}
+<div class="card">
+    <h3 style="margin-bottom:12px;">{{ selected_month }} — {{ records|length }} registro(s)</h3>
+    {% if records %}
+    <table>
+        <thead>
+            <tr>
+                <th>Fecha</th>
+                <th>Categoria</th>
+                <th>Descripcion</th>
+                <th>Total</th>
+                <th>Banco</th>
+                <th>Origen</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in records %}
+            <tr>
+                <td>{{ r.expense_date or '-' }}</td>
+                <td>{{ r.category or '-' }}</td>
+                <td>{{ r.description or '-' }}</td>
+                <td>{% if r.total %}${{ r.total }}{% endif %}</td>
+                <td>{{ r.bank or '-' }}</td>
+                <td>
+                    {% if r.source == 'sheets_migration' %}
+                    <span class="status" style="background:#f3f4f6;color:#374151;">migrado</span>
+                    {% else %}
+                    <span class="status status-ENVIADO">app</span>
+                    {% endif %}
+                </td>
+                <td><a href="/reports/{{ r.id }}">Ver detalle</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color:var(--muted);text-align:center;padding:32px;">Sin registros para este mes</p>
+    {% endif %}
+</div>
+{% else %}
+<div class="card">
+    {% if months %}
+    <table>
+        <thead>
+            <tr>
+                <th>Mes</th>
+                <th>Registros</th>
+                <th>Total</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in months %}
+            <tr>
+                <td>{{ m.month_label }}</td>
+                <td>{{ m.count }}</td>
+                <td>${{ "%.2f"|format(m.total) }}</td>
+                <td>
+                    <a href="/reports?month={{ m.month_label|urlencode }}">Ver registros</a>
+                    &nbsp;·&nbsp;
+                    <a href="/reports/excel?month={{ m.month_label|urlencode }}">Excel</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color:var(--muted);text-align:center;padding:40px;">
+        Sin registros enviados a la base de datos todavia.
+    </p>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

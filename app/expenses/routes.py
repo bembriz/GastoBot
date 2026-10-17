@@ -24,6 +24,7 @@ from app.database.models import (
     User,
 )
 from app.database.session import get_db
+from app.external.sender import send_expense as send_expense_to_postgres
 from app.sheets.sender import send_expense as send_expense_to_sheets
 from app.templates import render
 
@@ -55,6 +56,24 @@ def _is_stuck_sheets_send(record: ExpenseRecord, now: datetime | None = None) ->
 def _bulk_message(message: str, css_class: str = "") -> str:
     class_attr = f' class="{css_class}"' if css_class else ""
     return f"<span{class_attr}>{message}</span>"
+
+
+def _send_target() -> str:
+    return os.environ.get("GASTOSIA_SEND_TARGET", "postgres").strip().lower()
+
+
+async def _dispatch_send(record_id: str, group_code: str) -> dict[str, object]:
+    if _send_target() == "sheets":
+        return await send_expense_to_sheets(record_id, group_code)
+    return await send_expense_to_postgres(record_id, group_code)
+
+
+def _send_success_text(result: dict[str, object]) -> str:
+    description = result.get("description") or ""
+    tab = result.get("tab") or ""
+    row = result.get("row")
+    destination = f"fila {row} en {tab}" if row is not None else f"mes {tab}"
+    return f"Enviado — {description} ({destination})"
 
 
 async def get_user(request: Request, db: AsyncSession) -> User | None:
@@ -256,6 +275,35 @@ async def expense_detail(
     )
 
 
+@router.get("/expenses/{record_id}/image")
+async def expense_image(
+    record_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    result = await db.execute(
+        select(ExpenseRecord)
+        .options(joinedload(ExpenseRecord.image_file))
+        .where(ExpenseRecord.id == record_id)
+    )
+    record = result.unique().scalar_one_or_none()
+    if not record:
+        raise HTTPException(404, "Comprobante no encontrado")
+
+    if user.role != "admin" and record.owner_id != user.id:
+        raise HTTPException(403, "No autorizado")
+
+    image = record.image_file
+    if not image:
+        raise HTTPException(404, "Imagen no encontrada")
+
+    path = image.original_path or image.optimized_path
+    if not path or not os.path.exists(path):
+        raise HTTPException(404, "Archivo de imagen no accesible")
+
+    return FileResponse(path, media_type=image.mime_type)
+
+
 @router.get("/images/{record_id}/view")
 async def view_image(
     record_id: str, request: Request, db: AsyncSession = Depends(get_db)
@@ -264,8 +312,19 @@ async def view_image(
     if not user:
         return RedirectResponse("/login")
 
-    result = await db.execute(select(ImageFile).where(ImageFile.record_id == record_id))
-    image = result.scalar_one_or_none()
+    result = await db.execute(
+        select(ExpenseRecord)
+        .options(joinedload(ExpenseRecord.image_file))
+        .where(ExpenseRecord.id == record_id)
+    )
+    record = result.unique().scalar_one_or_none()
+    if not record:
+        raise HTTPException(404, "Imagen no encontrada")
+
+    if user.role != "admin" and record.owner_id != user.id:
+        raise HTTPException(403, "No autorizado")
+
+    image = record.image_file
     if not image:
         raise HTTPException(404, "Imagen no encontrada")
 
@@ -389,13 +448,19 @@ async def send_expense(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> HTMLResponse:
-    result = await send_expense_to_sheets(record_id, group_code)
-    if result["success"]:
+    record_result = await db.execute(select(ExpenseRecord).where(ExpenseRecord.id == record_id))
+    record = record_result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(404, "Comprobante no encontrado")
+    if user.role != "admin" and record.owner_id != user.id:
+        raise HTTPException(403, "No autorizado")
+
+    result = await _dispatch_send(record_id, group_code)
+    if result.get("success"):
         return HTMLResponse(
-            f'<span style="color:var(--success);">✓ Enviado — {result.get("description")} '
-            f"(fila {result.get('row')} en {result.get('tab')})</span>"
+            f'<span style="color:var(--success);">&#10003; {_send_success_text(result)}</span>'
         )
-    return HTMLResponse(f'<span class="error">{result["error"]}</span>')
+    return HTMLResponse(f'<span class="error">{result.get("error")}</span>')
 
 
 @router.post("/expenses/{record_id}/retry")
@@ -490,16 +555,19 @@ async def bulk_send_expenses(
             )
             continue
         try:
-            result = await send_expense_to_sheets(rid, record.group_code)  # type: ignore[arg-type]
-            if result["success"]:
+            result = await _dispatch_send(rid, record.group_code)  # type: ignore[arg-type]
+            if result.get("success"):
+                tab = result.get("tab")
+                row = result.get("row")
+                destination = f"fila {row} en {tab}" if row is not None else f"mes {tab}"
                 results.append(
                     f"<span style='color:var(--success);'>"
-                    f"&#10003; {record.source_filename}: fila {result.get('row')}"
+                    f"&#10003; {record.source_filename}: {destination}"
                     f"</span>"
                 )
             else:
                 results.append(
-                    f"<span class='error'>{record.source_filename}: {result['error']}</span>"
+                    f"<span class='error'>{record.source_filename}: {result.get('error')}</span>"
                 )
         except Exception as e:
             results.append(f"<span class='error'>{record.source_filename}: {e}</span>")
