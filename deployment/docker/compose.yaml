@@ -11,7 +11,9 @@ services:
     env_file:
       - .env
     volumes:
-      - /mnt/warehouse/GastosIA:/data/gastos
+      - /srv/data/gastosia:/data/gastos
+      - /srv/data/gastos-ia/procesados:/data/gastos-ia/procesados
+      - /srv/data/gastobot/enviadas:/data/gastobot/enviadas
       - ./cred:/app/cred:ro
     networks:
       - gastos
@@ -45,7 +47,7 @@ services:
       ACCOUNT_esme: ${SAMBA_ESME_PASSWORD}
       SAMBA_VOLUME_CONFIG_gastos: "[GastosIA]; path=/shares/gastos; valid users = ruben esme; guest ok = no; read only = no; browseable = yes"
     volumes:
-      - /mnt/warehouse/GastosIA:/shares/gastos
+      - /srv/data/gastosia:/shares/gastos
 
 networks:
   gastos:
