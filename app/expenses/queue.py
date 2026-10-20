@@ -12,6 +12,7 @@ import contextlib
 import os
 import shutil
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -45,14 +46,23 @@ def _move_to_procesados(original_path: str, owner_folder: str) -> str | None:
         return None
 
 
-async def claim_next_job(db: AsyncSession) -> ProcessingQueue | None:
-    result = await db.execute(
+async def claim_next_job(
+    db: AsyncSession, owner_id: uuid.UUID | None = None
+) -> ProcessingQueue | None:
+    stmt = (
         select(ProcessingQueue)
         .where(ProcessingQueue.status == "EN_COLA")
         .order_by(ProcessingQueue.enqueued_at.asc(), ProcessingQueue.id.asc())
         .limit(1)
         .with_for_update(skip_locked=True)
     )
+    if owner_id is not None:
+        stmt = stmt.where(
+            ProcessingQueue.record_id.in_(
+                select(ExpenseRecord.id).where(ExpenseRecord.owner_id == owner_id)
+            )
+        )
+    result = await db.execute(stmt)
     job = result.scalar_one_or_none()
 
     if not job:
@@ -101,6 +111,19 @@ async def recover_stale_jobs(db: AsyncSession) -> int:
     if count:
         await db.commit()
     return count
+
+
+async def reset_job_to_en_cola(db: AsyncSession, job: ProcessingQueue) -> None:
+    job.status = "EN_COLA"
+    job.claimed_at = None
+    job.worker_id = None
+
+    record_result = await db.execute(select(ExpenseRecord).where(ExpenseRecord.id == job.record_id))
+    record = record_result.scalar_one_or_none()
+    if record:
+        record.status = "EN_COLA"
+
+    await db.commit()
 
 
 async def complete_job(
@@ -153,7 +176,12 @@ async def worker_loop() -> None:
             await asyncio.sleep(5)
 
 
-async def process_job(db: AsyncSession, job: ProcessingQueue) -> bool:
+async def process_job(
+    db: AsyncSession,
+    job: ProcessingQueue,
+    engine: str | None = None,
+    on_event: Callable[[str, str], None] | None = None,
+) -> bool:
     record_result = await db.execute(select(ExpenseRecord).where(ExpenseRecord.id == job.record_id))
     record = record_result.scalar_one_or_none()
     if not record:
@@ -169,16 +197,19 @@ async def process_job(db: AsyncSession, job: ProcessingQueue) -> bool:
         return False
 
     print(f"[Worker] Analizando imagen: {image_path}")
-    extraction = await extract_from_image(image_path)
+    extract_on_event = (lambda msg: on_event("extraccion", msg)) if on_event is not None else None
+    extraction = await extract_from_image(
+        image_path, preferred_engine=engine, on_event=extract_on_event
+    )
 
-    engine = extraction.get("engine") or "?"
+    used_engine = extraction.get("engine") or "?"
     if extraction.get("error_message"):
-        print(f"[Worker] ERROR [{engine}] {extraction['error_message']}", flush=True)
+        print(f"[Worker] ERROR [{used_engine}] {extraction['error_message']}", flush=True)
     elif not extraction.get("is_valid_json"):
-        print(f"[Worker] ADVERTENCIA [{engine}]: JSON invalido", flush=True)
+        print(f"[Worker] ADVERTENCIA [{used_engine}]: JSON invalido", flush=True)
     else:
         print(
-            f"[Worker] OK [{engine}] en {extraction.get('elapsed_ms', 0)}ms",
+            f"[Worker] OK [{used_engine}] en {extraction.get('elapsed_ms', 0)}ms",
             flush=True,
         )
 
@@ -215,6 +246,39 @@ async def process_job(db: AsyncSession, job: ProcessingQueue) -> bool:
 
     await db.commit()
     return success
+
+
+async def process_batch(
+    engine: str,
+    owner_id: uuid.UUID | None,
+    on_event: Callable[[str, str], None],
+) -> int:
+    """Procesa secuencialmente todos los jobs EN_COLA (opcionalmente de un dueno).
+
+    Garantiza un solo ANALIZANDO a la vez (R008). Devuelve el numero de jobs
+    procesados con exito.
+    """
+    from app.expenses import activity
+
+    processed = 0
+    while True:
+        async with async_session() as db:
+            job = await claim_next_job(db, owner_id=owner_id)
+            if not job:
+                break
+            rec_result = await db.execute(
+                select(ExpenseRecord).where(ExpenseRecord.id == job.record_id)
+            )
+            rec = rec_result.scalar_one_or_none()
+            fname = (rec.source_filename if rec else None) or str(job.record_id)
+            activity.set_batch(str(job.record_id), fname, engine)
+            on_event("info", f"Reclamado: {fname} (intento {job.attempts})")
+            ok = await process_job(db, job, engine=engine, on_event=on_event)
+            await complete_job(db, job, ok, None if ok else "Error de procesamiento")
+            if ok:
+                processed += 1
+    activity.clear_batch()
+    return processed
 
 
 if __name__ == "__main__":
