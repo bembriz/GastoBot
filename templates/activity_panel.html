@@ -1,0 +1,17 @@
+<div class="activity-panel" style="border:1px solid var(--border,#ddd);border-radius:8px;padding:12px;margin-bottom:12px;">
+  <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
+    <span><strong>En cola:</strong> {{ queued }}</span>
+    <span><strong>Estado:</strong> {% if state.busy %}Procesando…{% else %}Libre{% endif %}</span>
+    {% if state.busy %}
+    <span><strong>Imagen:</strong> {{ state.filename }}</span>
+    <span><strong>Motor:</strong> {{ state.engine }}</span>
+    <span><strong>Transcurrido:</strong> {{ state.elapsed_s }}s</span>
+    {% endif %}
+  </div>
+  <h4 style="margin:12px 0 4px;">Actividad</h4>
+  <div style="max-height:220px;overflow-y:auto;font-family:monospace;font-size:12px;">
+    {% for e in events %}
+    <div><span style="color:#888;">{{ e.ts }}</span> [{{ e.kind }}] {{ e.msg }}</div>
+    {% else %}<div>Sin actividad reciente.</div>{% endfor %}
+  </div>
+</div>

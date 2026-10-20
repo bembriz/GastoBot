@@ -1,12 +1,13 @@
 """Rutas de gastos: dashboard, visor, actualizacion, envio a Sheets."""
 
+import asyncio
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from starlette.responses import Response
@@ -24,6 +25,8 @@ from app.database.models import (
     User,
 )
 from app.database.session import get_db
+from app.expenses import activity
+from app.expenses.queue import process_batch, reset_job_to_en_cola
 from app.external.sender import send_expense as send_expense_to_postgres
 from app.sheets.sender import send_expense as send_expense_to_sheets
 from app.templates import render
@@ -614,3 +617,90 @@ async def bulk_delete_expenses(
         results.append(f"<span style='color:var(--success);'>{filename}: eliminado</span>")
 
     return HTMLResponse("<br>".join(results))
+
+
+def _log_task_result(task: asyncio.Task[int]) -> None:
+    """Done-callback: evita 'Task exception was never retrieved' en fire-and-forget."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        print(f"[Procesamiento] Tarea termino con error: {exc}")
+
+
+@router.post("/expenses/process", response_class=HTMLResponse)
+async def process_manual(
+    request: Request,
+    engine: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    user = await get_user(request, db)
+    if not user:
+        return RedirectResponse("/login")
+    if engine not in ("gemini", "kimi"):
+        return HTMLResponse("Motor no valido", status_code=400)
+    if activity.is_busy():
+        return HTMLResponse("Proceso en curso", status_code=409)
+
+    owner_id = None if user.role == "admin" else user.id
+    task = asyncio.create_task(process_batch(engine, owner_id, activity.push_event))
+    activity.attach_task(task)
+    task.add_done_callback(_log_task_result)
+    activity.push_event("info", f"Lote iniciado (motor {engine})")
+    return HTMLResponse("Procesamiento iniciado")
+
+
+@router.post("/expenses/stop", response_class=HTMLResponse)
+async def stop_manual(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
+    user = await get_user(request, db)
+    if not user:
+        return RedirectResponse("/login")
+    if not activity.is_busy():
+        return HTMLResponse("No hay proceso en curso")
+
+    record_id = activity.get_state().get("record_id")
+    task = activity.pop_task()
+    if task:
+        task.cancel()
+    # CancelledError es BaseException: process_batch solo corre su finally
+    # (clear_batch), NO resetea el job. El reset lo hace aqui el route.
+    if record_id:
+        try:
+            rid = uuid.UUID(str(record_id))
+        except ValueError:
+            rid = None
+        if rid is not None:
+            result = await db.execute(
+                select(ProcessingQueue).where(ProcessingQueue.record_id == rid)
+            )
+            job = result.scalar_one_or_none()
+            if job and job.status == "ANALIZANDO":
+                await reset_job_to_en_cola(db, job)
+    activity.push_event("stop", "Lote detenido")
+    activity.clear_batch()
+    return HTMLResponse("Lote detenido")
+
+
+@router.get("/dashboard/activity", response_class=HTMLResponse)
+async def dashboard_activity(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
+    user = await get_user(request, db)
+    if not user:
+        return RedirectResponse("/login")
+
+    count_q = (
+        select(func.count()).select_from(ExpenseRecord).where(ExpenseRecord.status == "EN_COLA")
+    )
+    if user.role != "admin":
+        count_q = count_q.where(ExpenseRecord.owner_id == user.id)
+    queued = (await db.execute(count_q)).scalar_one()
+
+    return HTMLResponse(
+        render(
+            "activity_panel.html",
+            request=request,
+            user=user,
+            state=activity.get_state(),
+            events=activity.get_events(),
+            queued=queued,
+        )
+    )
