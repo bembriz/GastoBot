@@ -4,9 +4,13 @@ import base64
 import json
 import os
 import time
+from collections.abc import Callable
 from typing import Any
 
 GEMINI_MODEL = os.environ.get("GASTOSIA_GEMINI_MODEL", "gemini-2.0-flash")
+
+GEMINI_TIMEOUT_S = int(os.environ.get("GASTOSIA_EXTRACTION_TIMEOUT", "120"))
+GEMINI_TIMEOUT_MS = GEMINI_TIMEOUT_S * 1000
 
 KIMI_API_KEY = os.environ.get("GASTOSIA_KIMI_API_KEY", "").strip()
 KIMI_MODEL = os.environ.get("GASTOSIA_KIMI_MODEL", "kimi-k2.6")
@@ -72,12 +76,16 @@ Reglas IMPORTANTES:
 
 async def _gemini_extract(image_path: str, mime: str, api_key: str) -> dict[str, Any]:
     from google import genai
+    from google.genai import types
 
     with open(image_path, "rb") as f:
         image_data = f.read()
 
-    client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_MS),
+    )
+    response = await client.aio.models.generate_content(
         model=GEMINI_MODEL,
         contents=[  # type: ignore[arg-type]
             PROMPT_EXTRACCION,
@@ -142,44 +150,67 @@ async def _kimi_extract(image_path: str, mime: str) -> dict[str, Any]:
     }
 
 
-async def extract_from_image(image_path: str) -> dict[str, Any]:
+async def extract_from_image(
+    image_path: str,
+    preferred_engine: str | None = None,
+    on_event: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
     t0 = time.monotonic()
     collected_errors: list[str] = []
     mime = _guess_mime(image_path)
 
-    # 1. Probar todas las keys de Gemini
-    for i, key in enumerate(GEMINI_API_KEYS):
-        label = f"Gemini({i + 1})"
-        try:
-            result = await _gemini_extract(image_path, mime, key)
-            if not result.get("error_message"):
-                elapsed_ms = int((time.monotonic() - t0) * 1000)
-                return _build_response(result["raw_response"], elapsed_ms, "gemini", None)
-            collected_errors.append(f"{label}: {result['error_message']}")
-        except Exception as e:
-            err_str = str(e)
-            if "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
-                collected_errors.append(f"{label}: cuota agotada")
-                print(f"[Extraction] {label} sin cuota, probando siguiente...", flush=True)
-            else:
-                collected_errors.append(f"{label}: {err_str[:120]}")
-                print(f"[Extraction] {label} error: {err_str[:120]}", flush=True)
+    def emit(msg: str) -> None:
+        if on_event is not None:
+            on_event(msg)
 
-    # 2. Kimi como ultimo recurso
-    if KIMI_API_KEY:
+    try_gemini = preferred_engine in (None, "gemini")
+    try_kimi = preferred_engine in (None, "kimi")
+
+    # 1. Probar todas las keys de Gemini
+    if try_gemini:
+        for i, key in enumerate(GEMINI_API_KEYS):
+            label = f"Gemini({i + 1})"
+            emit(f"{label}: intentando extraccion...")
+            try:
+                result = await _gemini_extract(image_path, mime, key)
+                if not result.get("error_message"):
+                    elapsed_ms = int((time.monotonic() - t0) * 1000)
+                    emit(f"{label}: exitoso")
+                    return _build_response(result["raw_response"], elapsed_ms, "gemini", None)
+                collected_errors.append(f"{label}: {result['error_message']}")
+                emit(f"{label}: {result['error_message']}")
+            except Exception as e:
+                err_str = str(e)
+                if "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
+                    collected_errors.append(f"{label}: cuota agotada")
+                    print(f"[Extraction] {label} sin cuota, probando siguiente...", flush=True)
+                    emit(f"{label}: cuota agotada")
+                else:
+                    collected_errors.append(f"{label}: {err_str[:120]}")
+                    print(f"[Extraction] {label} error: {err_str[:120]}", flush=True)
+                    emit(f"{label}: {err_str[:120]}")
+
+    # 2. Kimi como ultimo recurso (o motor unico si se prefirio)
+    if try_kimi and KIMI_API_KEY:
+        emit("Kimi: intentando extraccion...")
         try:
             result = await _kimi_extract(image_path, mime)
             if not result.get("error_message"):
                 elapsed_ms = int((time.monotonic() - t0) * 1000)
+                emit("Kimi: exitoso")
                 return _build_response(result["raw_response"], elapsed_ms, "kimi", None)
             collected_errors.append(f"Kimi: {result['error_message']}")
+            emit(f"Kimi: {result['error_message']}")
         except Exception as e:
             collected_errors.append(f"Kimi: {e!s:.120}")
-    else:
+            emit(f"Kimi: {e!s:.120}")
+    elif try_kimi:
         collected_errors.append("Kimi: no configurado")
+        emit("Kimi: no configurado")
 
     error_msg = " | ".join(collected_errors) if collected_errors else "Ningun motor configurado"
     print(f"[Extraction] Todos los motores fallaron: {error_msg}", flush=True)
+    emit(f"Todos los motores fallaron: {error_msg}")
 
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     return _build_response("", elapsed_ms, None, error_msg)

@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 from app.expenses.extraction import (
     _guess_mime,
@@ -23,16 +23,20 @@ class TestGuessMime:
         assert _guess_mime("photo.bmp") == "image/jpeg"
 
 
-def _build_genai_mock(response_text: str) -> MagicMock:
+def _build_genai_mock(response_text: str) -> dict[str, MagicMock]:
     mock_response = MagicMock()
     mock_response.text = response_text
+    mock_async_models = MagicMock()
+    mock_async_models.generate_content = AsyncMock(return_value=mock_response)
     mock_client = MagicMock()
-    mock_client.models.generate_content.return_value = mock_response
+    mock_client.aio.models = mock_async_models
     mock_genai = MagicMock()
     mock_genai.Client.return_value = mock_client
+    mock_genai.types.HttpOptions = MagicMock()
     mock_google = MagicMock()
     mock_google.genai = mock_genai
-    return mock_google
+    mock_google.__path__ = []
+    return {"google": mock_google, "google.genai": mock_genai}
 
 
 class TestExtractFromImage:
@@ -58,7 +62,7 @@ class TestExtractFromImage:
     async def test_gemini_invalid_json(self, monkeypatch):
         from app.expenses import extraction
 
-        mock_google = _build_genai_mock("Not valid JSON here")
+        mock_modules = _build_genai_mock("Not valid JSON here")
         fake_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
         monkeypatch.setattr(extraction, "GEMINI_API_KEYS", ["fake-key"])
@@ -66,7 +70,7 @@ class TestExtractFromImage:
 
         with (
             patch("builtins.open", mock_open(read_data=fake_data)),
-            patch.dict("sys.modules", {"google": mock_google}),
+            patch.dict("sys.modules", mock_modules),
         ):
             result = await extract_from_image("/fake/path.png")
 
@@ -80,7 +84,7 @@ class TestExtractFromImage:
             '"ticket_description": "Compra super", "bank": "BBVA", '
             '"transaction_type": "Credito"}'
         )
-        mock_google = _build_genai_mock(response_text)
+        mock_modules = _build_genai_mock(response_text)
         fake_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
         monkeypatch.setattr(extraction, "GEMINI_API_KEYS", ["fake-key"])
@@ -88,7 +92,7 @@ class TestExtractFromImage:
 
         with (
             patch("builtins.open", mock_open(read_data=fake_data)),
-            patch.dict("sys.modules", {"google": mock_google}),
+            patch.dict("sys.modules", mock_modules),
         ):
             result = await extract_from_image("/fake/path.jpg")
 
@@ -105,7 +109,7 @@ class TestExtractFromImage:
             '"transaction_type": "Transferencia", '
             '"confidence": {"amount": 0.9, "bank": 0.7}}'
         )
-        mock_google = _build_genai_mock(response_text)
+        mock_modules = _build_genai_mock(response_text)
         fake_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
         monkeypatch.setattr(extraction, "GEMINI_API_KEYS", ["fake-key"])
@@ -113,7 +117,7 @@ class TestExtractFromImage:
 
         with (
             patch("builtins.open", mock_open(read_data=fake_data)),
-            patch.dict("sys.modules", {"google": mock_google}),
+            patch.dict("sys.modules", mock_modules),
         ):
             result = await extract_from_image("/fake/path.jpg")
 
