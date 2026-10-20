@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 
 from app.database.models import ExpenseRecord, ExtractionRun, ImageFile, ProcessingQueue
 from app.expenses import activity, queue
@@ -152,6 +153,47 @@ async def test_process_batch_exception_resets_job_and_clears_state(db_session, t
     assert activity.is_busy() is False
     assert activity.get_state()["record_id"] is None
     assert any(kind == "error" and "boom" in msg for kind, msg in events)
+
+
+async def test_process_batch_resets_job_when_session_is_poisoned(db_session, test_standard_user):
+    """F5: error de BD en el flush deja la sesion rolled-back.
+
+    ``process_job`` escribe un ``transaction_type`` invalido (viola
+    ``ck_expense_records_transaction_type``) y hace flush, por lo que SQLAlchemy
+    envenena la ``AsyncSession`` y propaga ``IntegrityError``. El handler de
+    ``process_batch`` debe hacer rollback antes de resetear el job; si no, el
+    reset tambien falla y el job queda atascado en ANALIZANDO.
+    """
+    _, q = await _mk_record(db_session, test_standard_user.id)
+    record_id = q.record_id
+
+    async def fake_process_job(db, job, engine=None, on_event=None):
+        record = await db.get(ExpenseRecord, job.record_id)
+        assert record is not None
+        record.transaction_type = "invalido"
+        await db.flush()
+        raise AssertionError("el flush debio violar el CHECK")
+
+    events: list[tuple[str, str]] = []
+    activity.clear_batch()
+    with (
+        patch("app.expenses.queue.process_job", new=AsyncMock(side_effect=fake_process_job)),
+        pytest.raises(IntegrityError),
+    ):
+        await queue.process_batch(
+            "gemini",
+            test_standard_user.id,
+            lambda kind, msg: events.append((kind, msg)),
+        )
+
+    await db_session.refresh(q)
+    assert q.status == "EN_COLA"
+    assert q.claimed_at is None
+    assert q.worker_id is None
+    rec = await db_session.get(ExpenseRecord, record_id)
+    assert rec is not None and rec.status == "EN_COLA"
+    assert activity.is_busy() is False
+    assert any(kind == "error" for kind, _ in events)
 
 
 async def test_process_job_passes_engine_and_adapts_on_event(tmp_path):

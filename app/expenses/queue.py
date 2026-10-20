@@ -115,6 +115,9 @@ async def recover_stale_jobs(db: AsyncSession) -> int:
 
 
 async def reset_job_to_en_cola(db: AsyncSession, job: ProcessingQueue) -> None:
+    # Tras un rollback SQLAlchemy expira todas las instancias; refrescar evita
+    # un lazy load sincrono (MissingGreenlet) al asignar los atributos.
+    await db.refresh(job)
     job.status = "EN_COLA"
     job.claimed_at = None
     job.worker_id = None
@@ -188,6 +191,10 @@ async def worker_loop() -> None:
                         print(f"[Worker] Error procesando job {job.record_id}: {e}")
                         activity.push_event("error", f"Error procesando job: {e}")
                         try:
+                            # F5: un fallo de BD en el flush/commit deja la
+                            # sesion rolled-back; sin este rollback el reset
+                            # tambien fallaria y el job quedaria ANALIZANDO.
+                            await db.rollback()
                             await reset_job_to_en_cola(db, job)
                         except Exception as reset_err:
                             print(f"[Worker] Error reseteando job: {reset_err}")
@@ -308,6 +315,10 @@ async def process_batch(
                 except Exception as e:
                     on_event("error", f"Error procesando {fname}: {e}")
                     try:
+                        # F5: si el fallo viene de un flush/commit de BD la
+                        # sesion queda envenenada; hay que sacarla del estado
+                        # rolled-back antes de resetear el job.
+                        await db.rollback()
                         await reset_job_to_en_cola(db, job)
                     except Exception as reset_err:
                         on_event("error", f"No se pudo reiniciar el job {fname}: {reset_err}")
