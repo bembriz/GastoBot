@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import ExpenseRecord, ExtractionRun, ImageFile, ProcessingQueue
 from app.database.session import async_session
+from app.expenses import activity
 from app.expenses.extraction import extract_from_image
 
 WORKER_ID = str(uuid.uuid4())[:8]
@@ -161,6 +162,13 @@ async def worker_loop() -> None:
 
     while True:
         try:
+            # Guard de direccion doble (I3): si un lote manual esta corriendo
+            # (activity busy), el worker automatico no reclama — evita dos
+            # ANALIZANDO simultaneos (R008). El route /process protege la
+            # direccion inversa consultando la DB.
+            if activity.is_busy():
+                await asyncio.sleep(1)
+                continue
             async with async_session() as db:
                 job = await claim_next_job(db)
                 if job:

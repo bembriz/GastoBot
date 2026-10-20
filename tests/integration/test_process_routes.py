@@ -87,6 +87,42 @@ class TestProcessRoute:
         assert "Proceso en curso" in (r1.text + r2.text)
         assert mock_batch.await_count == 1
 
+    async def test_process_conflicts_with_analizando_job_in_db(
+        self, db_session, test_admin_user, _clean_activity
+    ):
+        # Worker auto sostiene un job en ANALIZANDO pero NO marco busy
+        # (ventana claim -> set_batch): el route debe bloquear igual (I3).
+        record = ExpenseRecord(
+            owner_id=test_admin_user.id,
+            image_hash=f"sha_gate_{uuid.uuid4().hex[:16]}",
+            status="ANALIZANDO",
+            source_filename=f"gate_{uuid.uuid4().hex[:8]}.jpg",
+        )
+        db_session.add(record)
+        await db_session.flush()
+        job = ProcessingQueue(
+            record_id=record.id,
+            status="ANALIZANDO",
+            claimed_at=datetime.now(UTC),
+            worker_id="w-auto",
+        )
+        db_session.add(job)
+        await db_session.commit()
+
+        try:
+            assert not activity.is_busy()
+            mock_batch = AsyncMock(return_value=0)
+            with patch("app.expenses.routes.process_batch", new=mock_batch):
+                async with _make_client(test_admin_user) as client:
+                    r = await client.post("/expenses/process", data={"engine": "gemini"})
+            assert r.status_code == 409
+            assert "ANALIZANDO" in r.text
+            mock_batch.assert_not_awaited()
+        finally:
+            await db_session.delete(job)
+            await db_session.delete(record)
+            await db_session.commit()
+
 
 class TestStopRoute:
     async def test_stop_without_batch_shows_notice(self, test_admin_user, _clean_activity):

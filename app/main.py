@@ -32,6 +32,10 @@ async def _start_worker() -> None:
     await worker_loop()
 
 
+def _auto_process_enabled() -> bool:
+    return os.environ.get("GASTOSIA_AUTO_PROCESS", "").strip().lower() in ("1", "true", "yes")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     global _monitor_task, _worker_task
@@ -40,10 +44,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         return
     try:
         _monitor_task = asyncio.create_task(_start_monitor())
-        _worker_task = asyncio.create_task(_start_worker())
-        print("[App] Monitor y worker FIFO iniciados", flush=True)
+        if _auto_process_enabled():
+            _worker_task = asyncio.create_task(_start_worker())
+            print("[App] Monitor y worker FIFO iniciados", flush=True)
+        else:
+            print("[App] Worker automatico deshabilitado (procesamiento manual)", flush=True)
     except Exception as e:
         print(f"[App] ERROR iniciando tareas: {e}", flush=True)
+
+    # Recuperacion de jobs ANALIZANDO atascados: SIEMPRE al arranque, con o
+    # sin worker automatico (modo solo-manual).
+    try:
+        from app.database.session import async_session
+        from app.expenses.queue import recover_stale_jobs
+
+        async with async_session() as db:
+            recovered = await recover_stale_jobs(db)
+            if recovered:
+                print(f"[App] Recuperados {recovered} trabajos ANALIZANDO al arranque", flush=True)
+    except Exception as e:
+        print(f"[App] ERROR recuperando trabajos: {e}", flush=True)
+
     yield
     if _monitor_task:
         _monitor_task.cancel()

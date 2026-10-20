@@ -650,6 +650,15 @@ async def process_manual(
     async with _process_lock:
         if activity.is_busy():
             return HTMLResponse("Proceso en curso", status_code=409)
+        # Guard de direccion doble (I3): el worker automatico NO marca
+        # activity busy; si sostiene un job ANALIZANDO (ventana claim->
+        # set_batch o proceso largo), un lote manual no debe arrancar.
+        # R008: un solo ANALIZANDO a la vez.
+        in_flight = await db.execute(
+            select(ProcessingQueue.id).where(ProcessingQueue.status == "ANALIZANDO").limit(1)
+        )
+        if in_flight.scalar_one_or_none() is not None:
+            return HTMLResponse("Ya hay una imagen en ANALIZANDO", status_code=409)
         task = asyncio.create_task(process_batch(engine, owner_id, activity.push_event))
         activity.attach_task(task)
         task.add_done_callback(_log_task_result)
