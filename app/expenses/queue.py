@@ -256,29 +256,41 @@ async def process_batch(
     """Procesa secuencialmente todos los jobs EN_COLA (opcionalmente de un dueno).
 
     Garantiza un solo ANALIZANDO a la vez (R008). Devuelve el numero de jobs
-    procesados con exito.
+    procesados con exito. Si un job lanza excepcion, se emite evento de error,
+    el job vuelve a EN_COLA (no queda atascado) y la excepcion se relanza;
+    activity.clear_batch() siempre corre en el finally.
     """
     from app.expenses import activity
 
     processed = 0
-    while True:
-        async with async_session() as db:
-            job = await claim_next_job(db, owner_id=owner_id)
-            if not job:
-                break
-            rec_result = await db.execute(
-                select(ExpenseRecord).where(ExpenseRecord.id == job.record_id)
-            )
-            rec = rec_result.scalar_one_or_none()
-            fname = (rec.source_filename if rec else None) or str(job.record_id)
-            activity.set_batch(str(job.record_id), fname, engine)
-            on_event("info", f"Reclamado: {fname} (intento {job.attempts})")
-            ok = await process_job(db, job, engine=engine, on_event=on_event)
-            await complete_job(db, job, ok, None if ok else "Error de procesamiento")
-            if ok:
-                processed += 1
-    activity.clear_batch()
-    return processed
+    try:
+        while True:
+            async with async_session() as db:
+                job = await claim_next_job(db, owner_id=owner_id)
+                if not job:
+                    break
+                rec_result = await db.execute(
+                    select(ExpenseRecord).where(ExpenseRecord.id == job.record_id)
+                )
+                rec = rec_result.scalar_one_or_none()
+                fname = (rec.source_filename if rec else None) or str(job.record_id)
+                activity.set_batch(str(job.record_id), fname, engine)
+                on_event("info", f"Reclamado: {fname} (intento {job.attempts})")
+                try:
+                    ok = await process_job(db, job, engine=engine, on_event=on_event)
+                    await complete_job(db, job, ok, None if ok else "Error de procesamiento")
+                except Exception as e:
+                    on_event("error", f"Error procesando {fname}: {e}")
+                    try:
+                        await reset_job_to_en_cola(db, job)
+                    except Exception as reset_err:
+                        on_event("error", f"No se pudo reiniciar el job {fname}: {reset_err}")
+                    raise
+                if ok:
+                    processed += 1
+        return processed
+    finally:
+        activity.clear_batch()
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select
 
@@ -118,6 +119,39 @@ async def test_process_batch_failure_not_counted(db_session, test_standard_user)
     await db_session.refresh(q)
     assert q.status == "ERROR_PERMANENTE"
     assert activity.is_busy() is False
+
+
+async def test_process_batch_exception_resets_job_and_clears_state(db_session, test_standard_user):
+    _, q = await _mk_record(db_session, test_standard_user.id)
+    record_id = q.record_id
+
+    events: list[tuple[str, str]] = []
+    activity.clear_batch()
+    with (
+        patch(
+            "app.expenses.queue.process_job",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        await queue.process_batch(
+            "gemini",
+            test_standard_user.id,
+            lambda kind, msg: events.append((kind, msg)),
+        )
+
+    # el job no queda atascado en ANALIZANDO: vuelve a EN_COLA
+    await db_session.refresh(q)
+    assert q.status == "EN_COLA"
+    assert q.claimed_at is None
+    assert q.worker_id is None
+    # el record del job tambien vuelve a EN_COLA
+    rec = await db_session.get(ExpenseRecord, record_id)
+    assert rec is not None and rec.status == "EN_COLA"
+    # el estado del lote se limpio y hubo evento de error
+    assert activity.is_busy() is False
+    assert activity.get_state()["record_id"] is None
+    assert any(kind == "error" and "boom" in msg for kind, msg in events)
 
 
 async def test_process_job_passes_engine_and_adapts_on_event(tmp_path):
