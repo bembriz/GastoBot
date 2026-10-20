@@ -70,6 +70,12 @@ class TestExpensesRoutes:
         client.cookies.set(COOKIE_NAME, cookie)
         r = client.get("/dashboard")
         assert r.status_code == 200
+        # T6: barra de control + panel de actividad (polling cada 3s)
+        assert 'id="engine-select"' in r.text
+        assert 'hx-post="/expenses/process"' in r.text
+        assert 'hx-post="/expenses/stop"' in r.text
+        assert 'id="activity-panel"' in r.text
+        assert 'hx-get="/dashboard/activity"' in r.text
 
     def test_dashboard_status_with_session(self, client, _test_users_setup, test_admin_user):
         cookie = _make_cookie(test_admin_user.id, test_admin_user.username, test_admin_user.role)

@@ -30,6 +30,24 @@
 </div>
 <div id="bulk-result" style="margin-bottom:8px;" aria-live="polite"></div>
 
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+    <label for="engine-select">Motor:</label>
+    <select id="engine-select">
+        <option value="gemini">Gemini</option>
+        <option value="kimi">Kimi</option>
+    </select>
+    <button class="btn btn-primary"
+            hx-post="/expenses/process"
+            hx-include="#engine-select"
+            hx-target="#bulk-result" hx-swap="innerHTML">Procesar imágenes</button>
+    <button class="btn btn-danger"
+            hx-post="/expenses/stop"
+            hx-target="#bulk-result" hx-swap="innerHTML">Detener lote</button>
+</div>
+<div id="activity-panel" hx-get="/dashboard/activity" hx-trigger="every 3s" hx-swap="innerHTML">
+    <p>Cargando actividad...</p>
+</div>
+
 <div id="expense-list" hx-get="/dashboard/status" hx-trigger="every 3s" hx-swap="innerHTML">
     <p>Cargando comprobantes...</p>
 </div>
