@@ -8,12 +8,15 @@ arranque, con o sin worker.
 import asyncio
 import contextlib
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import text
 
 from app import main
-from app.database.models import ProcessingQueue
+from app.database.models import ExpenseRecord, ProcessingQueue
+from app.expenses import activity
 from app.main import _auto_process_enabled
 
 
@@ -204,6 +207,84 @@ class TestWorkerResetOnError:
             mock_complete.assert_not_awaited()
             error_calls = [c for c in mock_push.call_args_list if c.args[0] == "error"]
             assert error_calls, "el worker debe emitir evento de error en activity"
+
+    async def test_worker_resets_job_after_poisoned_session(self, db_session, test_standard_user):
+        """F5: el rollback real de worker_loop rescata la sesion envenenada.
+
+        A diferencia del test anterior (que mockea ``reset_job_to_en_cola``),
+        aqui el reset corre contra PostgreSQL. Un UPDATE directo viola el CHECK
+        de ``transaction_type``: PostgreSQL aborta la transaccion (sesion
+        envenenada) y sin el ``db.rollback()`` de ``worker_loop`` el refresh
+        del reset falla y el job queda atascado en ANALIZANDO.
+
+        Se usa SQL directo en vez de un flush ORM a proposito: un flush fallido
+        expira todas las instancias y el ``print(f"...{job.record_id}...")``
+        previo al rollback lanzaria PendingRollbackError (bug latente que este
+        test no intenta cubrir; ver reporte).
+        """
+        record = ExpenseRecord(
+            owner_id=test_standard_user.id,
+            image_hash=f"sha_worker_poison_{uuid.uuid4().hex[:16]}",
+            status="EN_COLA",
+            source_filename=f"worker_poison_{uuid.uuid4().hex[:8]}.jpg",
+        )
+        db_session.add(record)
+        await db_session.flush()
+        # FIFO muy antiguo: el worker reclama este job aunque la base de test
+        # conserve EN_COLA de otras pruebas; asi el test es determinista.
+        job = ProcessingQueue(
+            record_id=record.id,
+            status="EN_COLA",
+            enqueued_at=datetime(2000, 1, 1, tzinfo=UTC),
+        )
+        db_session.add(job)
+        await db_session.commit()
+        record_id = record.id
+
+        async def poisoned_process(db, job, engine=None, on_event=None):
+            await db.execute(
+                text("UPDATE expense_records SET transaction_type = 'invalido' WHERE id = :rid"),
+                {"rid": job.record_id},
+            )
+            raise AssertionError("el UPDATE debio violar el CHECK")
+
+        class _StopLoopError(Exception):
+            pass
+
+        activity.clear_batch()
+        try:
+            with (
+                patch(
+                    "app.expenses.queue.process_job",
+                    new=AsyncMock(side_effect=poisoned_process),
+                ),
+                patch("app.expenses.queue.asyncio.sleep", side_effect=_StopLoopError),
+                contextlib.suppress(_StopLoopError),
+            ):
+                from app.expenses.queue import worker_loop
+
+                await worker_loop()
+
+            await db_session.refresh(job)
+            assert job.attempts == 1, "el worker debe haber reclamado este job"
+            assert job.status == "EN_COLA"
+            assert job.claimed_at is None
+            assert job.worker_id is None
+            rec = await db_session.get(ExpenseRecord, record_id)
+            assert rec is not None and rec.status == "EN_COLA"
+            assert any(
+                ev["kind"] == "error" and "Error procesando job" in ev["msg"]
+                for ev in activity.get_events()
+            )
+        finally:
+            await db_session.execute(
+                ProcessingQueue.__table__.delete().where(ProcessingQueue.record_id == record_id)
+            )
+            await db_session.execute(
+                ExpenseRecord.__table__.delete().where(ExpenseRecord.id == record_id)
+            )
+            await db_session.commit()
+            activity.clear_batch()
 
 
 class TestProdHostGuard:

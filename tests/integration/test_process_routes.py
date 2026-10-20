@@ -160,6 +160,32 @@ class TestStopRoute:
         assert r.status_code == 200
         assert "No hay proceso en curso" in r.text
 
+    async def test_stop_waits_on_shared_claim_lock(self, test_admin_user, _clean_activity):
+        # F1: stop decide+barre bajo el MISMO lock que POST /process y el
+        # worker; con el lock tomado no debe responder ni tocar el state.
+        lock = activity.get_claim_lock()
+        await lock.acquire()
+        activity.set_batch(str(uuid.uuid4()), "lock.jpg", "gemini")
+        try:
+            async with _make_client(test_admin_user) as client:
+                post = asyncio.create_task(client.post("/expenses/stop"))
+                # Margen amplio: sin el lock la ruta responde en ~60 ms (primer
+                # uso del pool); asi el rojo es determinista, no una carrera.
+                await asyncio.sleep(0.3)
+                assert not post.done(), "el POST debe esperar el lock compartido"
+                assert activity.is_busy(), "stop no debe decidir con el lock tomado"
+                lock.release()
+                r = await post
+            assert r.status_code == 200
+            assert "Lote detenido" in r.text
+            assert not activity.is_busy()
+        finally:
+            if lock.locked():
+                lock.release()
+            activity.clear_batch()
+            activity.pop_task()
+            await asyncio.sleep(0)
+
     async def test_stop_resets_in_flight_job(self, db_session, test_admin_user, _clean_activity):
         record = ExpenseRecord(
             owner_id=test_admin_user.id,

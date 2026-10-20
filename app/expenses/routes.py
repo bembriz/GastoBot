@@ -678,31 +678,39 @@ async def stop_manual(request: Request, db: AsyncSession = Depends(get_db)) -> R
     if not user:
         return RedirectResponse("/login")
 
-    if not activity.is_busy():
-        # F2: salida para un job ANALIZANDO huérfano (worker auto murio sin
-        # marcar busy): sin este barrido, /process quedaria en 409 permanente
-        # porque recover_stale_jobs solo corre al arranque.
-        orphan = await db.execute(
-            select(ProcessingQueue.id).where(ProcessingQueue.status == "ANALIZANDO").limit(1)
-        )
-        if orphan.scalar_one_or_none() is None:
-            return HTMLResponse("No hay proceso en curso")
+    # F1: la decision (busy/ANALIZANDO) y el barrido corren bajo el MISMO lock
+    # compartido que POST /process y worker_loop. Sin el, stop podia decidir
+    # entre el claim recien commiteado y el set_batch y responder "No hay
+    # proceso en curso" con un lote arrancando. cancel+sweep son cortos; no se
+    # sostiene el lock durante la extraccion.
+    async with activity.get_claim_lock():
+        if not activity.is_busy():
+            # F2: salida para un job ANALIZANDO huérfano (worker auto murio sin
+            # marcar busy): sin este barrido, /process quedaria en 409 permanente
+            # porque recover_stale_jobs solo corre al arranque.
+            orphan = await db.execute(
+                select(ProcessingQueue.id).where(ProcessingQueue.status == "ANALIZANDO").limit(1)
+            )
+            if orphan.scalar_one_or_none() is None:
+                return HTMLResponse("No hay proceso en curso")
 
-    task = activity.pop_task()
-    if task:
-        task.cancel()
-    # CancelledError es BaseException: process_batch solo corre su finally
-    # (clear_batch), NO resetea el job. El reset lo hace aqui el route.
-    # Barrido por status en vez del record_id del state: R008 garantiza a lo
-    # mas un ANALIZANDO, y cubre la ventana claim->set_batch donde el state
-    # todavia muestra el job anterior y el recien reclamado quedaria atascado
-    # (recover_stale_jobs solo corre al arranque). El barrido corre post-cancel
-    # para capturar tambien cualquier claim en vuelo.
-    result = await db.execute(select(ProcessingQueue).where(ProcessingQueue.status == "ANALIZANDO"))
-    for job in result.scalars().all():
-        await reset_job_to_en_cola(db, job)
-    activity.push_event("stop", "Lote detenido")
-    activity.clear_batch()
+        task = activity.pop_task()
+        if task:
+            task.cancel()
+        # CancelledError es BaseException: process_batch solo corre su finally
+        # (clear_batch), NO resetea el job. El reset lo hace aqui el route.
+        # Barrido por status en vez del record_id del state: R008 garantiza a lo
+        # mas un ANALIZANDO, y cubre la ventana claim->set_batch donde el state
+        # todavia muestra el job anterior y el recien reclamado quedaria atascado
+        # (recover_stale_jobs solo corre al arranque). El barrido corre post-cancel
+        # para capturar tambien cualquier claim en vuelo.
+        result = await db.execute(
+            select(ProcessingQueue).where(ProcessingQueue.status == "ANALIZANDO")
+        )
+        for job in result.scalars().all():
+            await reset_job_to_en_cola(db, job)
+        activity.push_event("stop", "Lote detenido")
+        activity.clear_batch()
     return HTMLResponse("Lote detenido")
 
 
