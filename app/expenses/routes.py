@@ -33,6 +33,12 @@ from app.templates import render
 
 router = APIRouter()
 
+# Secciona la comprobacion is_busy + creacion del task en POST /expenses/process.
+# process_batch tarda varios await (primer claim) en llamar set_batch; sin este
+# lock dos POST casi simultaneos pasarian ambos el check y crearian dos lotes
+# (dos ANALIZANDO en paralelo, rompiendo R008).
+_process_lock = asyncio.Lock()
+
 SHEETS_STUCK_AFTER = timedelta(minutes=15)
 
 
@@ -639,14 +645,20 @@ async def process_manual(
         return RedirectResponse("/login")
     if engine not in ("gemini", "kimi"):
         return HTMLResponse("Motor no valido", status_code=400)
-    if activity.is_busy():
-        return HTMLResponse("Proceso en curso", status_code=409)
 
     owner_id = None if user.role == "admin" else user.id
-    task = asyncio.create_task(process_batch(engine, owner_id, activity.push_event))
-    activity.attach_task(task)
-    task.add_done_callback(_log_task_result)
-    activity.push_event("info", f"Lote iniciado (motor {engine})")
+    async with _process_lock:
+        if activity.is_busy():
+            return HTMLResponse("Proceso en curso", status_code=409)
+        task = asyncio.create_task(process_batch(engine, owner_id, activity.push_event))
+        activity.attach_task(task)
+        task.add_done_callback(_log_task_result)
+        activity.push_event("info", f"Lote iniciado (motor {engine})")
+        # busy sincrono: sin esto el segundo POST del mismo instante ve
+        # is_busy()==False hasta que process_batch complete el primer claim.
+        # record_id/filename vacios hasta ese claim; el primer set_batch del
+        # batch los rellena y clear_batch (finally) los limpia.
+        activity.set_batch("", "", engine)
     return HTMLResponse("Procesamiento iniciado")
 
 
@@ -658,24 +670,18 @@ async def stop_manual(request: Request, db: AsyncSession = Depends(get_db)) -> R
     if not activity.is_busy():
         return HTMLResponse("No hay proceso en curso")
 
-    record_id = activity.get_state().get("record_id")
     task = activity.pop_task()
     if task:
         task.cancel()
     # CancelledError es BaseException: process_batch solo corre su finally
     # (clear_batch), NO resetea el job. El reset lo hace aqui el route.
-    if record_id:
-        try:
-            rid = uuid.UUID(str(record_id))
-        except ValueError:
-            rid = None
-        if rid is not None:
-            result = await db.execute(
-                select(ProcessingQueue).where(ProcessingQueue.record_id == rid)
-            )
-            job = result.scalar_one_or_none()
-            if job and job.status == "ANALIZANDO":
-                await reset_job_to_en_cola(db, job)
+    # Barrido por status en vez del record_id del state: R008 garantiza a lo
+    # mas un ANALIZANDO, y cubre la ventana claim->set_batch donde el state
+    # todavia muestra el job anterior y el recien reclamado quedaria atascado
+    # (recover_stale_jobs solo corre al arranque).
+    result = await db.execute(select(ProcessingQueue).where(ProcessingQueue.status == "ANALIZANDO"))
+    for job in result.scalars().all():
+        await reset_job_to_en_cola(db, job)
     activity.push_event("stop", "Lote detenido")
     activity.clear_batch()
     return HTMLResponse("Lote detenido")

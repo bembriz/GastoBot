@@ -72,6 +72,21 @@ class TestProcessRoute:
         assert args[0] == "kimi"
         assert args[1] == test_standard_user.id
 
+    async def test_process_concurrent_posts_start_single_batch(
+        self, test_admin_user, _clean_activity
+    ):
+        mock_batch = AsyncMock(return_value=0)
+        with patch("app.expenses.routes.process_batch", new=mock_batch):
+            async with _make_client(test_admin_user) as client:
+                r1, r2 = await asyncio.gather(
+                    client.post("/expenses/process", data={"engine": "gemini"}),
+                    client.post("/expenses/process", data={"engine": "gemini"}),
+                )
+            await asyncio.sleep(0)
+        assert sorted([r1.status_code, r2.status_code]) == [200, 409]
+        assert "Proceso en curso" in (r1.text + r2.text)
+        assert mock_batch.await_count == 1
+
 
 class TestStopRoute:
     async def test_stop_without_batch_shows_notice(self, test_admin_user, _clean_activity):
@@ -124,6 +139,63 @@ class TestStopRoute:
             assert q.claimed_at is None
             assert q.worker_id is None
             assert rec.status == "EN_COLA"
+        finally:
+            await db_session.delete(job)
+            await db_session.delete(record)
+            await db_session.commit()
+
+    async def test_stop_resets_analizando_job_not_in_state(
+        self, db_session, test_admin_user, _clean_activity
+    ):
+        record = ExpenseRecord(
+            owner_id=test_admin_user.id,
+            image_hash=f"sha_sweep_{uuid.uuid4().hex[:16]}",
+            status="ANALIZANDO",
+            source_filename=f"sweep_{uuid.uuid4().hex[:8]}.jpg",
+        )
+        db_session.add(record)
+        await db_session.flush()
+        job = ProcessingQueue(
+            record_id=record.id,
+            status="ANALIZANDO",
+            claimed_at=datetime.now(UTC),
+            worker_id="w-test",
+        )
+        db_session.add(job)
+        await db_session.commit()
+
+        # El state apunta a OTRO record: simula la ventana claim->set_batch
+        # en la que stop lee el record_id anterior al job recien reclamado.
+        activity.set_batch(str(uuid.uuid4()), "otro.jpg", "gemini")
+
+        async def _noop() -> None:
+            return None
+
+        task = asyncio.create_task(_noop())
+        activity.attach_task(task)
+
+        try:
+            async with _make_client(test_admin_user) as client:
+                r = await client.post("/expenses/stop")
+            assert r.status_code == 200
+            assert "Lote detenido" in r.text
+
+            from app.database.session import async_session
+
+            async with async_session() as fresh:
+                q = (
+                    await fresh.execute(
+                        select(ProcessingQueue).where(ProcessingQueue.record_id == record.id)
+                    )
+                ).scalar_one()
+                rec = (
+                    await fresh.execute(select(ExpenseRecord).where(ExpenseRecord.id == record.id))
+                ).scalar_one()
+            assert q.status == "EN_COLA"
+            assert q.claimed_at is None
+            assert q.worker_id is None
+            assert rec.status == "EN_COLA"
+            assert not activity.is_busy()
         finally:
             await db_session.delete(job)
             await db_session.delete(record)
