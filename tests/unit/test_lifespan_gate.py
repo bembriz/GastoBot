@@ -12,7 +12,6 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from sqlalchemy import text
 
 from app import main
 from app.database.models import ExpenseRecord, ProcessingQueue
@@ -209,18 +208,15 @@ class TestWorkerResetOnError:
             assert error_calls, "el worker debe emitir evento de error en activity"
 
     async def test_worker_resets_job_after_poisoned_session(self, db_session, test_standard_user):
-        """F5: el rollback real de worker_loop rescata la sesion envenenada.
+        """F5: un flush fallido expira el job y el worker debe resetearlo igual.
 
         A diferencia del test anterior (que mockea ``reset_job_to_en_cola``),
-        aqui el reset corre contra PostgreSQL. Un UPDATE directo viola el CHECK
-        de ``transaction_type``: PostgreSQL aborta la transaccion (sesion
-        envenenada) y sin el ``db.rollback()`` de ``worker_loop`` el refresh
-        del reset falla y el job queda atascado en ANALIZANDO.
-
-        Se usa SQL directo en vez de un flush ORM a proposito: un flush fallido
-        expira todas las instancias y el ``print(f"...{job.record_id}...")``
-        previo al rollback lanzaria PendingRollbackError (bug latente que este
-        test no intenta cubrir; ver reporte).
+        aqui el reset corre contra PostgreSQL. ``process_job`` asigna un
+        ``transaction_type`` invalido y hace ``flush``: el CHECK de PostgreSQL
+        falla, SQLAlchemy expira todas las instancias y la sesion queda
+        envenenada. El handler de ``worker_loop`` debe hacer rollback ANTES de
+        tocar cualquier atributo de ``job`` (un ``job.record_id`` previo lanza
+        PendingRollbackError y el reset nunca corre).
         """
         record = ExpenseRecord(
             owner_id=test_standard_user.id,
@@ -242,11 +238,11 @@ class TestWorkerResetOnError:
         record_id = record.id
 
         async def poisoned_process(db, job, engine=None, on_event=None):
-            await db.execute(
-                text("UPDATE expense_records SET transaction_type = 'invalido' WHERE id = :rid"),
-                {"rid": job.record_id},
-            )
-            raise AssertionError("el UPDATE debio violar el CHECK")
+            rec = await db.get(ExpenseRecord, job.record_id)
+            assert rec is not None
+            rec.transaction_type = "invalido"
+            await db.flush()
+            raise AssertionError("el flush debio violar el CHECK")
 
         class _StopLoopError(Exception):
             pass

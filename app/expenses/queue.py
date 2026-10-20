@@ -176,7 +176,13 @@ async def worker_loop() -> None:
                     if not activity.is_busy():
                         job = await claim_next_job(db)
                 if job:
-                    print(f"[Worker] Reclamado job {job.record_id} (intento {job.attempts})")
+                    # F5: capturar antes de process_job. Un fallo de BD en el
+                    # flush/commit expira todas las instancias; acceder a
+                    # job.record_id despues lanzaria PendingRollbackError ANTES
+                    # del rollback y el reset nunca correria.
+                    job_id = job.record_id
+                    job_attempts = job.attempts
+                    print(f"[Worker] Reclamado job {job_id} (intento {job_attempts})")
                     try:
                         success = await process_job(db, job)
                         await complete_job(
@@ -188,13 +194,12 @@ async def worker_loop() -> None:
                         # process_batch: evento de error + reset + re-raise
                         # (el re-raise cae al handler externo -> sleep 5 y
                         # limita el reintento inmediato).
-                        print(f"[Worker] Error procesando job {job.record_id}: {e}")
+                        # F5: primero el rollback, antes de cualquier acceso a
+                        # atributos de job (expirados por el flush fallido).
+                        await db.rollback()
+                        print(f"[Worker] Error procesando job {job_id}: {e}")
                         activity.push_event("error", f"Error procesando job: {e}")
                         try:
-                            # F5: un fallo de BD en el flush/commit deja la
-                            # sesion rolled-back; sin este rollback el reset
-                            # tambien fallaria y el job quedaria ANALIZANDO.
-                            await db.rollback()
                             await reset_job_to_en_cola(db, job)
                         except Exception as reset_err:
                             print(f"[Worker] Error reseteando job: {reset_err}")
