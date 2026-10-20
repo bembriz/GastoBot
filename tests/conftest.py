@@ -1,16 +1,16 @@
+import asyncio
 import os
 import uuid
 from datetime import UTC, datetime
 
+import pytest
 import pytest_asyncio
 
 # ---------------------------------------------------------------------------
 # Set required env vars BEFORE any app imports that read os.environ at module level
 # ---------------------------------------------------------------------------
 if "GASTOSIA_DATABASE_HOST" not in os.environ:
-    os.environ["GASTOSIA_DATABASE_HOST"] = os.environ.get(
-        "GASTOSIA_DATABASE_HOST", "192.168.100.45"
-    )
+    os.environ["GASTOSIA_DATABASE_HOST"] = "127.0.0.1"
 if "GASTOSIA_DATABASE_PORT" not in os.environ:
     os.environ["GASTOSIA_DATABASE_PORT"] = os.environ.get("GASTOSIA_DATABASE_PORT", "5432")
 if "GASTOSIA_DATABASE_NAME" not in os.environ:
@@ -32,6 +32,30 @@ if "GASTOSIA_GEMINI_API_KEY" not in os.environ:
     os.environ["GASTOSIA_GEMINI_API_KEY"] = "test-gemini-api-key"
 
 os.environ["GASTOSIA_TEST"] = "1"
+
+# ---------------------------------------------------------------------------
+# F4: los tests solo contra hosts loopback. El nombre de BD ya se protege
+# abajo, pero el host venia de .envrc/direnv (192.168.100.24:5432 =
+# produccion) y solo ufw evitaba el dano al correr sin sourcear el env de
+# tests. Cualquier host no-loopback aborta con mensaje claro.
+# ---------------------------------------------------------------------------
+_LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
+def validate_test_db_host(host: str, *, allow_prod: bool | None = None) -> None:
+    """Levanta RuntimeError si `host` no es loopback (escape: ALLOW_PROD)."""
+    if allow_prod is None:
+        allow_prod = bool(os.environ.get("GASTOSIA_ALLOW_PROD_TESTS"))
+    if allow_prod:
+        return
+    if host.strip().lower() not in _LOOPBACK_HOSTS:
+        raise RuntimeError(
+            f"Tests contra host no-loopback ({host}); "
+            "sourcea /tmp/gastosia-test-env.sh o exporta GASTOSIA_ALLOW_PROD_TESTS=1"
+        )
+
+
+validate_test_db_host(os.environ["GASTOSIA_DATABASE_HOST"])
 
 # ---------------------------------------------------------------------------
 # Aislamiento: los tests NUNCA corren contra la base de produccion.
@@ -171,3 +195,16 @@ async def test_record(db_session, _test_users_setup, test_admin_user):
 
     await db_session.delete(record)
     await db_session.commit()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_claim_lock():
+    """Una instancia del lock compartido [route POST /process <-> worker] por test.
+
+    asyncio.Lock se ata al loop que la contiende primero; pytest-asyncio usa un
+    loop distinto por test, asi que reutilizarla entre tests lanzaria
+    RuntimeError ("bound to a different event loop").
+    """
+    from app.expenses import activity
+
+    activity._claim_lock = asyncio.Lock()

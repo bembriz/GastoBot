@@ -33,11 +33,12 @@ from app.templates import render
 
 router = APIRouter()
 
-# Secciona la comprobacion is_busy + creacion del task en POST /expenses/process.
-# process_batch tarda varios await (primer claim) en llamar set_batch; sin este
-# lock dos POST casi simultaneos pasarian ambos el check y crearian dos lotes
-# (dos ANALIZANDO en paralelo, rompiendo R008).
-_process_lock = asyncio.Lock()
+# La seccion is_busy + DB-check + creacion del task en POST /expenses/process
+# corre bajo el lock COMPARTIDO con worker_loop (activity.get_claim_lock, F1):
+# process_batch tarda varios await (primer claim) en llamar set_batch; sin ese
+# mutex un POST podia caer entre el check y el commit del claim del worker
+# (dos ANALIZANDO en paralelo, rompiendo R008). El lock vive en
+# app/expenses/activity.py para evitar el import circular routes<->queue.
 
 SHEETS_STUCK_AFTER = timedelta(minutes=15)
 
@@ -647,7 +648,7 @@ async def process_manual(
         return HTMLResponse("Motor no valido", status_code=400)
 
     owner_id = None if user.role == "admin" else user.id
-    async with _process_lock:
+    async with activity.get_claim_lock():
         if activity.is_busy():
             return HTMLResponse("Proceso en curso", status_code=409)
         # Guard de direccion doble (I3): el worker automatico NO marca
@@ -676,8 +677,16 @@ async def stop_manual(request: Request, db: AsyncSession = Depends(get_db)) -> R
     user = await get_user(request, db)
     if not user:
         return RedirectResponse("/login")
+
     if not activity.is_busy():
-        return HTMLResponse("No hay proceso en curso")
+        # F2: salida para un job ANALIZANDO huérfano (worker auto murio sin
+        # marcar busy): sin este barrido, /process quedaria en 409 permanente
+        # porque recover_stale_jobs solo corre al arranque.
+        orphan = await db.execute(
+            select(ProcessingQueue.id).where(ProcessingQueue.status == "ANALIZANDO").limit(1)
+        )
+        if orphan.scalar_one_or_none() is None:
+            return HTMLResponse("No hay proceso en curso")
 
     task = activity.pop_task()
     if task:
@@ -687,7 +696,8 @@ async def stop_manual(request: Request, db: AsyncSession = Depends(get_db)) -> R
     # Barrido por status en vez del record_id del state: R008 garantiza a lo
     # mas un ANALIZANDO, y cubre la ventana claim->set_batch donde el state
     # todavia muestra el job anterior y el recien reclamado quedaria atascado
-    # (recover_stale_jobs solo corre al arranque).
+    # (recover_stale_jobs solo corre al arranque). El barrido corre post-cancel
+    # para capturar tambien cualquier claim en vuelo.
     result = await db.execute(select(ProcessingQueue).where(ProcessingQueue.status == "ANALIZANDO"))
     for job in result.scalars().all():
         await reset_job_to_en_cola(db, job)

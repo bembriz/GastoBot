@@ -87,6 +87,35 @@ class TestProcessRoute:
         assert "Proceso en curso" in (r1.text + r2.text)
         assert mock_batch.await_count == 1
 
+    async def test_process_waits_on_shared_claim_lock(self, test_admin_user, _clean_activity):
+        # F1: POST /process decide+reclama bajo el MISMO lock que el worker;
+        # mientras el lock esta tomado, el route no decide nada (ni busy).
+        from app.expenses import activity
+
+        lock = activity.get_claim_lock()
+        await lock.acquire()
+        mock_batch = AsyncMock(return_value=0)
+        try:
+            with patch("app.expenses.routes.process_batch", new=mock_batch):
+                async with _make_client(test_admin_user) as client:
+                    post = asyncio.create_task(
+                        client.post("/expenses/process", data={"engine": "gemini"})
+                    )
+                    await asyncio.sleep(0.05)
+                    assert not post.done(), "el POST debe esperar el lock compartido"
+                    assert not activity.is_busy()
+                    assert mock_batch.await_count == 0
+                    lock.release()
+                    r = await post
+            assert r.status_code == 200
+            assert activity.is_busy()
+        finally:
+            if lock.locked():
+                lock.release()
+            activity.clear_batch()
+            activity.pop_task()
+            await asyncio.sleep(0)
+
     async def test_process_conflicts_with_analizando_job_in_db(
         self, db_session, test_admin_user, _clean_activity
     ):
@@ -232,6 +261,57 @@ class TestStopRoute:
             assert q.worker_id is None
             assert rec.status == "EN_COLA"
             assert not activity.is_busy()
+        finally:
+            await db_session.delete(job)
+            await db_session.delete(record)
+            await db_session.commit()
+
+    async def test_stop_sweeps_orphan_analizando_without_busy(
+        self, db_session, test_admin_user, _clean_activity
+    ):
+        # F2: job ANALIZANDO huérfano (worker auto murio sin marcar busy) ->
+        # stop debe barrerlo aunque is_busy() sea False; si no, /process
+        # queda en 409 permanente.
+        record = ExpenseRecord(
+            owner_id=test_admin_user.id,
+            image_hash=f"sha_orphan_{uuid.uuid4().hex[:16]}",
+            status="ANALIZANDO",
+            source_filename=f"orphan_{uuid.uuid4().hex[:8]}.jpg",
+        )
+        db_session.add(record)
+        await db_session.flush()
+        job = ProcessingQueue(
+            record_id=record.id,
+            status="ANALIZANDO",
+            claimed_at=datetime.now(UTC),
+            worker_id="w-dead",
+        )
+        db_session.add(job)
+        await db_session.commit()
+
+        try:
+            assert not activity.is_busy()
+            async with _make_client(test_admin_user) as client:
+                r = await client.post("/expenses/stop")
+            assert r.status_code == 200
+            assert "Lote detenido" in r.text
+            assert not activity.is_busy()
+
+            from app.database.session import async_session
+
+            async with async_session() as fresh:
+                q = (
+                    await fresh.execute(
+                        select(ProcessingQueue).where(ProcessingQueue.record_id == record.id)
+                    )
+                ).scalar_one()
+                rec = (
+                    await fresh.execute(select(ExpenseRecord).where(ExpenseRecord.id == record.id))
+                ).scalar_one()
+            assert q.status == "EN_COLA"
+            assert q.claimed_at is None
+            assert q.worker_id is None
+            assert rec.status == "EN_COLA"
         finally:
             await db_session.delete(job)
             await db_session.delete(record)

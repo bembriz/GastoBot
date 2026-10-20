@@ -162,21 +162,39 @@ async def worker_loop() -> None:
 
     while True:
         try:
-            # Guard de direccion doble (I3): si un lote manual esta corriendo
-            # (activity busy), el worker automatico no reclama — evita dos
-            # ANALIZANDO simultaneos (R008). El route /process protege la
-            # direccion inversa consultando la DB.
-            if activity.is_busy():
-                await asyncio.sleep(1)
-                continue
             async with async_session() as db:
-                job = await claim_next_job(db)
+                job: ProcessingQueue | None = None
+                # F1: seccion corta [decide + reclama] bajo el MISMO lock que
+                # POST /expenses/process — sin este mutex un POST entre el
+                # is_busy() y el commit del claim dejaba 2 ANALIZANDO (R008).
+                # El lock NO se sostiene durante la extraccion (no conviene
+                # bloquear al worker durante minutos un lote manual).
+                async with activity.get_claim_lock():
+                    if not activity.is_busy():
+                        job = await claim_next_job(db)
                 if job:
                     print(f"[Worker] Reclamado job {job.record_id} (intento {job.attempts})")
-                    success = await process_job(db, job)
-                    await complete_job(
-                        db, job, success, None if success else "Error de procesamiento"
-                    )
+                    try:
+                        success = await process_job(db, job)
+                        await complete_job(
+                            db, job, success, None if success else "Error de procesamiento"
+                        )
+                    except Exception as e:
+                        # F3: un fallo NO debe dejar el job ANALIZANDO (el
+                        # siguiente claim daria 2 ANALIZANDO). Igual que
+                        # process_batch: evento de error + reset + re-raise
+                        # (el re-raise cae al handler externo -> sleep 5 y
+                        # limita el reintento inmediato).
+                        print(f"[Worker] Error procesando job {job.record_id}: {e}")
+                        activity.push_event("error", f"Error procesando job: {e}")
+                        try:
+                            await reset_job_to_en_cola(db, job)
+                        except Exception as reset_err:
+                            print(f"[Worker] Error reseteando job: {reset_err}")
+                            activity.push_event("error", f"Error reseteando job: {reset_err}")
+                        raise
+                elif activity.is_busy():
+                    await asyncio.sleep(1)
                 else:
                     await asyncio.sleep(2)
         except Exception as e:

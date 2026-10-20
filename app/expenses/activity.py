@@ -4,6 +4,7 @@ Buffer circular de eventos + estado del lote en curso. No persiste: se pierde
 al reiniciar la app. Suficiente para el panel de visibilidad del dashboard.
 """
 
+import asyncio
 import time
 from collections import deque
 from typing import Any
@@ -18,6 +19,16 @@ _state: dict[str, Any] = {
     "engine": None,
 }
 _task: Any = None
+
+# F1: lock compartido para la seccion corta de [decide busy/ANALIZANDO +
+# claim/set_batch]. Lo usan el route POST /expenses/process y worker_loop a la
+# vez; sin el, un POST entre el check y el commit del claim dejaba 2 jobs
+# ANALIZANDO (R008). Vive aqui para evitar el import circular routes<->queue.
+_claim_lock = asyncio.Lock()
+
+
+def get_claim_lock() -> asyncio.Lock:
+    return _claim_lock
 
 
 def push_event(kind: str, msg: str) -> None:
