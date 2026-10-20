@@ -1,0 +1,14 @@
+# Configuración de gitleaks para Gastos IA.
+# Extiende las reglas por defecto y solo excluye datos sintéticos de pruebas y
+# la documentación de planes (que contiene placeholders, no credenciales reales).
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Datos sintéticos de tests y documentación"
+paths = [
+  '''tests/''',
+  '''docs/superpowers/plans/''',
+  '''\.env\.example$''',
+]

@@ -1,0 +1,110 @@
+name: quality-gate
+
+on:
+  push:
+    branches: [main, arnes]
+  pull_request:
+
+jobs:
+  quality:
+    name: Lint, tipos, tests y secretos
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gastos_ia_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      GASTOSIA_TEST: "1"
+      GASTOSIA_APP_ENV: development
+      GASTOSIA_DATABASE_HOST: 127.0.0.1
+      GASTOSIA_DATABASE_PORT: "5432"
+      GASTOSIA_DATABASE_NAME: gastos_ia_test
+      GASTOSIA_TEST_DATABASE_NAME: gastos_ia_test
+      GASTOSIA_DATABASE_USER: postgres
+      GASTOSIA_DATABASE_PASSWORD: postgres
+      GASTOSIA_SESSION_SECRET: ci-session-secret-64chars-long-key-for-tests!!
+      GASTOSIA_SMB_BASE: /tmp/GastosIA
+      GASTOSIA_PROCESSED_DIR: /tmp/GastosIA/procesados
+      GASTOSIA_SENT_IMAGES_DIR: /tmp/GastosIA/gastobot/enviadas
+      GASTOSIA_GEMINI_API_KEY_1: dummy-key-not-used
+      GASTOSIA_KIMI_API_KEY: ""
+      GASTOSIA_USE_ADMIN_DB: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Instalar dependencias
+        run: uv sync --frozen --extra dev
+      - name: Migraciones
+        run: uv run alembic upgrade head
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Repos privados: definir el secret GITLEAKS_LICENSE.
+      - name: Ruff
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: mypy
+        run: uv run mypy app/
+      - name: Tests (sin E2E)
+        run: uv run pytest tests/ -m "not e2e" --cov=app --cov-fail-under=60
+      - name: pip-audit
+        run: uv run pip-audit
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gastos_ia_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      GASTOSIA_TEST: "1"
+      GASTOSIA_APP_ENV: development
+      GASTOSIA_DATABASE_HOST: 127.0.0.1
+      GASTOSIA_DATABASE_PORT: "5432"
+      GASTOSIA_DATABASE_NAME: gastos_ia_test
+      GASTOSIA_TEST_DATABASE_NAME: gastos_ia_test
+      GASTOSIA_DATABASE_USER: postgres
+      GASTOSIA_DATABASE_PASSWORD: postgres
+      GASTOSIA_SESSION_SECRET: ci-session-secret-64chars-long-key-for-tests!!
+      GASTOSIA_SMB_BASE: /tmp/GastosIA
+      GASTOSIA_PROCESSED_DIR: /tmp/GastosIA/procesados
+      GASTOSIA_SENT_IMAGES_DIR: /tmp/GastosIA/gastobot/enviadas
+      GASTOSIA_GEMINI_API_KEY_1: dummy-key-not-used
+      GASTOSIA_KIMI_API_KEY: ""
+      GASTOSIA_USE_ADMIN_DB: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Instalar dependencias
+        run: uv sync --frozen --extra dev
+      - name: Migraciones
+        run: uv run alembic upgrade head
+      - name: Instalar Chromium
+        run: uv run playwright install --with-deps chromium
+      - name: Tests E2E
+        run: uv run pytest tests/e2e -m e2e
