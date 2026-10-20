@@ -27,7 +27,7 @@ WORKER_ID = str(uuid.uuid4())[:8]
 STALE_TIMEOUT_SECONDS = 600
 
 
-def _move_to_procesados(original_path: str, owner_folder: str) -> str | None:
+def _copy_to_procesados(original_path: str, owner_folder: str) -> str | None:
     try:
         src_dir = os.path.dirname(original_path)
         # GASTOSIA_PROCESSED_DIR permite fijar el destino (p. ej. unidad
@@ -39,11 +39,10 @@ def _move_to_procesados(original_path: str, owner_folder: str) -> str | None:
         filename = os.path.basename(original_path)
         dst = os.path.join(procesados_dir, filename)
         shutil.copy2(original_path, dst)
-        os.remove(original_path)
-        print(f"[Worker] Movido a procesados: {filename}")
+        print(f"[Worker] Copiado a procesados: {filename}")
         return dst
     except Exception as e:
-        print(f"[Worker] Error moviendo archivo: {e}")
+        print(f"[Worker] Error copiando archivo: {e}")
         return None
 
 
@@ -277,12 +276,32 @@ async def process_job(
 
     success = extraction.get("parsed_json") is not None
 
+    new_path: str | None = None
+    original_path: str | None = None
     if success and image.original_path:
-        new_path = _move_to_procesados(image.original_path, image.owner_folder)
+        original_path = image.original_path
+        new_path = _copy_to_procesados(original_path, image.owner_folder)
         if new_path:
             image.original_path = new_path
 
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        # El commit revierte la BD: la ruta sigue apuntando a pendientes. La
+        # copia debe limpiarse para no dejar un duplicado huerfano.
+        if new_path:
+            with contextlib.suppress(Exception):
+                os.remove(new_path)
+        raise
+
+    if new_path and original_path:
+        # Solo tras persistir la nueva ruta se elimina el original. Si falla,
+        # queda la copia en procesados y la BD ya apunta a ella.
+        try:
+            os.remove(original_path)
+        except OSError as e:
+            print(f"[Worker] No se pudo eliminar el original {original_path}: {e}")
+
     return success
 
 
@@ -304,7 +323,11 @@ async def process_batch(
     try:
         while True:
             async with async_session() as db:
-                job = await claim_next_job(db, owner_id=owner_id)
+                # El claim se hace bajo el mismo lock que POST /process y el
+                # worker: asi un stop/chequeo concurrente no se pierde entre el
+                # SELECT y el commit del claim. El lock NO cubre process_job.
+                async with activity.get_claim_lock():
+                    job = await claim_next_job(db, owner_id=owner_id)
                 if not job:
                     break
                 rec_result = await db.execute(

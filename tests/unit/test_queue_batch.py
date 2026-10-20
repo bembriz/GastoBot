@@ -1,5 +1,6 @@
 """Tests del filtro por dueno y del batch runner."""
 
+import asyncio
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -58,6 +59,34 @@ async def test_reset_job_returns_to_en_cola(db_session, test_standard_user):
     await queue.reset_job_to_en_cola(db_session, job)
     await db_session.refresh(job)
     assert job.status == "EN_COLA"
+
+
+async def test_process_batch_claim_waits_on_shared_claim_lock(db_session, test_standard_user):
+    await _mk_record(db_session, test_standard_user.id)
+
+    lock = activity.get_claim_lock()
+    await lock.acquire()
+    claim = AsyncMock(side_effect=queue.claim_next_job)
+    fake_process = AsyncMock(return_value=True)
+    activity.clear_batch()
+    try:
+        with (
+            patch("app.expenses.queue.claim_next_job", new=claim),
+            patch("app.expenses.queue.process_job", new=fake_process),
+        ):
+            task = asyncio.create_task(
+                queue.process_batch("gemini", test_standard_user.id, lambda kind, msg: None)
+            )
+            await asyncio.sleep(0.05)
+            claim.assert_not_awaited()
+            assert not task.done()
+            lock.release()
+            n = await task
+        assert n == 1
+    finally:
+        if lock.locked():
+            lock.release()
+        activity.clear_batch()
 
 
 async def test_process_batch_counts_successes_and_events(db_session, test_standard_user):
@@ -196,6 +225,82 @@ async def test_process_batch_resets_job_when_session_is_poisoned(db_session, tes
     assert any(kind == "error" for kind, _ in events)
 
 
+async def _process_job_commit_failure_setup(tmp_path, monkeypatch):
+    processed = tmp_path / "procesados"
+    monkeypatch.setenv("GASTOSIA_PROCESSED_DIR", str(processed))
+    pendientes = tmp_path / "Ruben" / "pendientes"
+    pendientes.mkdir(parents=True)
+    src = pendientes / "test.jpg"
+    src.write_text("image data")
+
+    db = AsyncMock()
+    db.add = MagicMock()
+    job = MagicMock(spec=ProcessingQueue)
+    job.record_id = uuid.uuid4()
+
+    record = MagicMock(spec=ExpenseRecord)
+    record.id = job.record_id
+    record.transaction_date = None
+    record.amount = None
+    record.ticket_description = None
+    record.bank = None
+    record.transaction_type = None
+    record.confidence_json = None
+
+    image = MagicMock(spec=ImageFile)
+    image.record_id = job.record_id
+    image.optimized_path = str(src)
+    image.original_path = str(src)
+    image.owner_folder = "Ruben"
+
+    db.execute.side_effect = [
+        MagicMock(scalar_one_or_none=MagicMock(return_value=record)),
+        MagicMock(scalar_one_or_none=MagicMock(return_value=image)),
+    ]
+
+    extraction = {
+        "parsed_json": {"amount": 100.0},
+        "raw_response": "{}",
+        "is_valid_json": True,
+        "elapsed_ms": 10,
+        "error_message": None,
+        "engine": "gemini",
+    }
+    return db, job, image, src, processed, extraction
+
+
+async def test_process_job_copies_to_procesados_and_removes_original(tmp_path, monkeypatch):
+    db, job, image, src, processed, extraction = await _process_job_commit_failure_setup(
+        tmp_path, monkeypatch
+    )
+
+    with patch("app.expenses.queue.extract_from_image", new=AsyncMock(return_value=extraction)):
+        ok = await queue.process_job(db, job)
+
+    copied = processed / "test.jpg"
+    assert ok is True
+    assert copied.exists()
+    assert not src.exists()
+    assert image.original_path == str(copied)
+    assert db.commit.await_count == 1
+
+
+async def test_process_job_commit_failure_keeps_original_and_cleans_copy(tmp_path, monkeypatch):
+    db, job, image, src, processed, extraction = await _process_job_commit_failure_setup(
+        tmp_path, monkeypatch
+    )
+    db.commit.side_effect = RuntimeError("commit boom")
+
+    with (
+        patch("app.expenses.queue.extract_from_image", new=AsyncMock(return_value=extraction)),
+        pytest.raises(RuntimeError, match="commit boom"),
+    ):
+        await queue.process_job(db, job)
+
+    assert src.exists(), "el original debe seguir disponible para el reintento"
+    assert not (processed / "test.jpg").exists(), "la copia debe limpiarse si falla el commit"
+
+
 async def test_process_job_passes_engine_and_adapts_on_event(tmp_path):
     db = AsyncMock()
     db.add = MagicMock()
@@ -241,7 +346,7 @@ async def test_process_job_passes_engine_and_adapts_on_event(tmp_path):
     fake_extract = AsyncMock(return_value=fake_extraction)
     with (
         patch("app.expenses.queue.extract_from_image", new=fake_extract),
-        patch("app.expenses.queue._move_to_procesados"),
+        patch("app.expenses.queue._copy_to_procesados", return_value="/procesados/test.jpg"),
     ):
         ok = await queue.process_job(
             db,

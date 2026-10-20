@@ -256,7 +256,7 @@ class TestProcessJob:
                 "app.expenses.queue.extract_from_image",
                 new=AsyncMock(return_value=fake_extraction),
             ),
-            patch("app.expenses.queue._move_to_procesados"),
+            patch("app.expenses.queue._copy_to_procesados", return_value=None),
         ):
             result = await process_job(db, job)
             assert result is True
@@ -304,9 +304,9 @@ class TestProcessJob:
             assert result is False
 
 
-class TestMoveToProcesados:
-    def test_moves_file_successfully(self, tmp_path, monkeypatch):
-        from app.expenses.queue import _move_to_procesados
+class TestCopyToProcesados:
+    def test_copies_file_successfully(self, tmp_path, monkeypatch):
+        from app.expenses.queue import _copy_to_procesados
 
         monkeypatch.delenv("GASTOSIA_PROCESSED_DIR", raising=False)
         pendientes = tmp_path / "Ruben" / "pendientes"
@@ -314,14 +314,15 @@ class TestMoveToProcesados:
         src = pendientes / "test.jpg"
         src.write_text("image data")
 
-        _move_to_procesados(str(src), "Ruben")
+        result = _copy_to_procesados(str(src), "Ruben")
 
         procesados = tmp_path / "Ruben" / "procesados" / "test.jpg"
+        assert result == str(procesados)
         assert procesados.exists()
-        assert not src.exists()
+        assert src.exists(), "copiar no debe borrar el original"
 
     def test_uses_configured_processed_dir(self, tmp_path, monkeypatch):
-        from app.expenses.queue import _move_to_procesados
+        from app.expenses.queue import _copy_to_procesados
 
         configured = tmp_path / "unidad-secundaria" / "procesados"
         monkeypatch.setenv("GASTOSIA_PROCESSED_DIR", str(configured))
@@ -330,16 +331,17 @@ class TestMoveToProcesados:
         src = pendientes / "test.jpg"
         src.write_text("image data")
 
-        _move_to_procesados(str(src), "Ruben")
+        result = _copy_to_procesados(str(src), "Ruben")
 
+        assert result == str(configured / "test.jpg")
         assert (configured / "test.jpg").exists()
-        assert not src.exists()
+        assert src.exists()
 
-    def test_missing_file_no_error(self, monkeypatch):
-        from app.expenses.queue import _move_to_procesados
+    def test_missing_file_returns_none(self, monkeypatch):
+        from app.expenses.queue import _copy_to_procesados
 
         monkeypatch.delenv("GASTOSIA_PROCESSED_DIR", raising=False)
-        _move_to_procesados("/nonexistent/file.jpg", "Ruben")
+        assert _copy_to_procesados("/nonexistent/file.jpg", "Ruben") is None
 
 
 class TestMonitorLoop:
