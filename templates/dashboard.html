@@ -32,15 +32,15 @@
 
 <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
     <label for="engine-select">Motor:</label>
-    <select id="engine-select">
+    <select id="engine-select" name="engine">
         <option value="gemini">Gemini</option>
         <option value="kimi">Kimi</option>
     </select>
-    <button class="btn btn-primary"
+    <button id="process-btn" class="btn btn-primary"
             hx-post="/expenses/process"
             hx-include="#engine-select"
             hx-target="#bulk-result" hx-swap="innerHTML">Procesar imágenes</button>
-    <button class="btn btn-danger"
+    <button id="stop-btn" class="btn btn-danger"
             hx-post="/expenses/stop"
             hx-target="#bulk-result" hx-swap="innerHTML">Detener lote</button>
 </div>
@@ -106,40 +106,47 @@
         if (deleteBtn) deleteBtn.disabled = !anySelected;
     }
 
+    function isBulkButton(btn) {
+        return !!btn && (btn.id === 'bulk-send-btn' || btn.id === 'bulk-delete-btn');
+    }
+
     document.body.addEventListener('htmx:afterRequest', function(evt) {
-        if (evt.detail.target.id === 'bulk-result') {
-            if (evt.detail.successful) {
-                selectedIds.clear();
-                var checks = document.querySelectorAll('.chk-record');
-                checks.forEach(function(c) { c.checked = false; });
-            }
-            updateBulkButtons();
+        if (evt.detail.target.id !== 'bulk-result') return;
+        if (!isBulkButton(evt.detail.elt)) return;
+        if (evt.detail.successful) {
+            selectedIds.clear();
+            var checks = document.querySelectorAll('.chk-record');
+            checks.forEach(function(c) { c.checked = false; });
         }
+        updateBulkButtons();
     });
 
     document.body.addEventListener('htmx:beforeRequest', function(evt) {
-        if (evt.detail.target.id === 'bulk-result') {
-            var btn = evt.detail.elt;
-            if (btn) {
-                btn.disabled = true;
-                btn.dataset.originalText = btn.textContent;
-                btn.textContent = btn.id === 'bulk-delete-btn' ? 'Eliminando...' : 'Enviando a BD...';
-            }
-            var result = document.getElementById('bulk-result');
-            var message = btn && btn.id === 'bulk-delete-btn' ? 'Preparando eliminacion...' : 'Preparando envio a BD...';
+        if (evt.detail.target.id !== 'bulk-result') return;
+        var btn = evt.detail.elt;
+        var result = document.getElementById('bulk-result');
+        if (isBulkButton(btn)) {
+            btn.disabled = true;
+            btn.dataset.originalText = btn.textContent;
+            btn.textContent = btn.id === 'bulk-delete-btn' ? 'Eliminando...' : 'Enviando a BD...';
+            var message = btn.id === 'bulk-delete-btn' ? 'Preparando eliminacion...' : 'Preparando envio a BD...';
             if (result) result.innerHTML = '<span style="color:var(--primary);">' + message + '</span>';
+        } else if (btn && result) {
+            var activityMessage = btn.id === 'stop-btn' ? 'Deteniendo...' : btn.id === 'process-btn' ? 'Procesando...' : '';
+            if (activityMessage) {
+                result.innerHTML = '<span style="color:var(--primary);">' + activityMessage + '</span>';
+            }
         }
     });
 
     document.body.addEventListener('htmx:afterRequest', function(evt) {
-        if (evt.detail.target.id === 'bulk-result') {
-            var btn = evt.detail.elt;
-            if (btn && btn.dataset.originalText) {
-                btn.textContent = btn.dataset.originalText;
-                delete btn.dataset.originalText;
-            }
-            updateBulkButtons();
+        if (evt.detail.target.id !== 'bulk-result') return;
+        var btn = evt.detail.elt;
+        if (isBulkButton(btn) && btn.dataset.originalText) {
+            btn.textContent = btn.dataset.originalText;
+            delete btn.dataset.originalText;
         }
+        updateBulkButtons();
     });
 
     function showBulkError(message) {

@@ -72,6 +72,10 @@ class TestExpensesRoutes:
         assert r.status_code == 200
         # T6: barra de control + panel de actividad (polling cada 3s)
         assert 'id="engine-select"' in r.text
+        # hx-include descarta controles sin name: el select debe enviar "engine"
+        assert 'id="engine-select" name="engine"' in r.text
+        assert 'id="process-btn"' in r.text
+        assert 'id="stop-btn"' in r.text
         assert 'hx-post="/expenses/process"' in r.text
         assert 'hx-post="/expenses/stop"' in r.text
         assert 'id="activity-panel"' in r.text
